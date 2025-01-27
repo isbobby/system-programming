@@ -1,7 +1,7 @@
 # Development Journal
 The development goal here is to create a TCP server in C using standard libraries.
 
-Referring to my notes, a basic TCP server should do the following
+Referring to my [notes](https://isbobby.github.io/fundamentals/tcp_connection_management.html), a basic TCP server should do the following
 
 1. create a TCP socket
 2. optinally configure the socket 
