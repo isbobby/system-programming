@@ -11,13 +11,15 @@ Referring to my [notes](https://isbobby.github.io/fundamentals/tcp_connection_ma
 6. close connection and clean up resources
 
 ## Creating a TCP Socket
-We need to refer to [man `socket(2)`](https://man7.org/linux/man-pages/man2/socket.2.html), where we obtain the following key information
+Refering to [man `socket(2)`](https://man7.org/linux/man-pages/man2/socket.2.html):
 ```c
 #include <sys/socket.h>
 int socket(int domain, int type, int protocol);
 ```
 
-Following the doc, we will use `AF_INET` as the `domain` argument, and `SOCK_STREAM` as the `type` argument. Digging down further, we see this quote
+We will use `AF_INET` as the `domain` argument, and `SOCK_STREAM` as the `type` argument. 
+
+The `man` further specifies that
 
 >  The protocol specifies a particular protocol to be used with the socket. Normally only a single protocol exists to support a particular socket type within a given protocol family, in which case protocol can be specified as 0
 
@@ -27,8 +29,7 @@ If we do `cat /etc/protocols | grep TCP`, we get the following (on my Macbook).
 ```
 tcp	6	TCP		# transmission control protocol
 ```
-
-With the above information, we can write the following code (note, the `close()` is added here but will be discussed later). We can use `0` as protocol, but `6 (tcp)` will be functionally the same.
+We can use `0` as protocol, but `6 (tcp)` will be functionally the same.
 ```c
 #include <sys/socket.h>
 #include <unistd.h>
@@ -40,7 +41,7 @@ int main() {
 }
 ```
 ## Binding socket to an address
-The created socket now does not have address assigned to it yet. `bind()` assigns the address specified by `addr` to the socket. 
+The created socket now has no address assigned to it yet. `bind()` assigns the address specified by `addr` to the socket.
 
 ```c
 #include <sys/socket.h>
@@ -48,9 +49,11 @@ The created socket now does not have address assigned to it yet. `bind()` assign
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 ```
 
-Based on `man bind(2)`, the `struct sockaddr` is to cast the incoming structure pointer to avoid compiler warning, the actual structure depends on the address family. In `man sockaddr`, we found ` sockaddr_in` which is suitable for IPv4.
+Based on [`man bind(2)`](https://man7.org/linux/man-pages/man2/bind.2.html), the `struct sockaddr` is to cast the incoming structure pointer to avoid compiler warning, the actual structure depends on the address family. 
 
-We rely on `#include <arpa/inet.h>` to provide `inet_addr` to convert a stirng to usable address, and `htons` (host to network) to convert `8080` to the right endianness.
+In [`man sockaddr`](https://man7.org/linux/man-pages/man3/sockaddr.3type.html), `struct sockaddr_in` is suitable for IPv4.
+
+We need to rely on `#include <arpa/inet.h>` to provide `inet_addr()` to convert a stirng to usable address, and `htons` (stands for host to network) to convert `8080` to the right endianness.
 
 ```c
 #include <netinet/in.h>
@@ -68,7 +71,9 @@ if (bind(sockfd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
 ```
 
 ## Transforming the socket into a passive socket
-Next, we will use [`Listen(2)`](https://man7.org/linux/man-pages/man2/listen.2.html) to transform the socket into a passive socket, used to accept incoming connections request using `accept(2)`. We will use `128` as the backlog size for now. On success, 0 is returned. We need to handle -1 on error and handle `errorno`.
+Next, we will use [`Listen(2)`](https://man7.org/linux/man-pages/man2/listen.2.html) to transform the socket into a passive socket, used to accept incoming connections request using [`accept(2)`](https://man7.org/linux/man-pages/man2/accept.2.html). 
+
+We will use `1` as the backlog size for now. On success, `listen()` returns `0`. We need to handle -1 on error and handle `errorno`.
 
 ```c
 #include <sys/socket.h>
