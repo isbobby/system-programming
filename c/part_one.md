@@ -1,4 +1,4 @@
-# Development Journal
+# Part 1 - TCP server/listener
 The development goal here is to create a TCP server in C using standard libraries.
 
 Referring to my [notes](https://isbobby.github.io/fundamentals/tcp_connection_management.html), a basic TCP server should do the following
@@ -98,10 +98,13 @@ int accept(int sockfd, struct sockaddr *_Nullable restrict addr, socklen_t *_Nul
 
 Since everything in linux is a file, we can use the `read()` to retrieve the data into a buffer, and print out the result.
 
+After retrieving the data into the buffer once, we can close the client socket for now.
+
 ```c
 char buffer[BUFFER_SIZE];
 ssize_t data_len = read(clientfd, buffer, BUFFER_SIZE);
 log_with_time("received data (%d):[%sb]", data_len, buffer);
+close(clientfd);
 ```
 
 We can send a small packet with `nc 127.0.0.1:8080 < data`, and the complete program output is the following
