@@ -7,6 +7,8 @@
 
 #include "log.h"
 
+#define BUFFER_SIZE 1024
+
 int main() {
     int sockfd;
     sockfd = socket(AF_INET, SOCK_STREAM, 6);
@@ -27,13 +29,17 @@ int main() {
 
     // hard coded data for now
     char * data = "(hard coded) Hi!";
-
     if (write(sockfd, data, strlen(data)) < 0) {
         perror("failed to write data");
         return 1;
     }
-    
     log_with_time("wrote data (%db) to server", strlen(data));
-
+    
+    char * recv_data[BUFFER_SIZE];
+    if (read(sockfd, recv_data, BUFFER_SIZE) < 0) {
+        perror("failed to read server response");
+    }
+    log_with_time("server response:%s", recv_data);
+    
     return 0;
 }
