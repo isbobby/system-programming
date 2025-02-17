@@ -57,6 +57,8 @@ int main() {
         ssize_t data_len = read(clientfd, buffer, BUFFER_SIZE);
         log_with_time("received data (%d):[%sb], sending response to client", data_len, buffer);
 
+        sleep(10);
+
         char write_back[1024];
         sprintf(write_back, "received data (%zdb)", data_len);
         if (write(clientfd, write_back, strlen(write_back)) < 0) {
