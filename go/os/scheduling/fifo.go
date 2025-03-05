@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sort"
 )
 
@@ -17,7 +16,7 @@ var FifoScheduling SchedulingStrategy = func(tasks *[]Task) Task {
 	})
 
 	task := old[0]
-	if task.StartTime > int(systemTime.Load()) {
+	for task.StartTime > int(systemTime.Load()) {
 		systemTime.Add(1)
 	}
 	*tasks = old[1:]
@@ -25,31 +24,24 @@ var FifoScheduling SchedulingStrategy = func(tasks *[]Task) Task {
 	return task
 }
 
-func (p Processor) RunFifo(ctx context.Context, inputTasks []Task) {
+func (p *Processor) RunFifo(ctx context.Context, inputTasks []Task) {
 	go p.Scheduler.ScheduleTask(ctx, FifoScheduling, inputTasks)
-
-	for !p.SchedulerReady.Load() {
-		// wait for scheduler to be ready
-	}
 
 	for {
 		if p.CurrentTask != nil {
-			fmt.Println("Executing", p.CurrentTask.Id, "t", systemTime.Load())
+			RecordLog(PROC, START_TASK, *p.CurrentTask)
 			for p.CurrentTask.Duration > 0 {
 				p.CurrentTask.Duration -= 1
 				systemTime.Add(1)
 			}
-			fmt.Println("Completed", p.CurrentTask.Id, "t", systemTime.Load())
+			RecordLog(PROC, COMPLETE_TASK, *p.CurrentTask)
 			p.CurrentTask = nil
 		}
 
 		select {
 		case nextTask := <-p.TaskQueue:
 			p.CurrentTask = &nextTask
-			fmt.Println("Received", p.CurrentTask.Id, "t", systemTime.Load())
-		default:
-			// no more task
-			fmt.Println("No more task to execute")
+		case <-p.SchedulerCompleted:
 		}
 
 		if p.CurrentTask == nil {

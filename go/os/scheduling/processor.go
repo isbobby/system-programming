@@ -7,25 +7,26 @@ import (
 var systemTime atomic.Int32
 
 type Processor struct {
-	TaskQueue      <-chan Task
-	SchedulerReady *atomic.Bool
-	Scheduler      Scheduler
-	CurrentTask    *Task
+	TaskQueue          <-chan Task
+	CurrentTask        *Task
+	Scheduler          Scheduler
+	SchedulerCompleted <-chan bool
 }
 
 func New() Processor {
-	taskChan := make(chan Task, 1)
+	taskChan := make(chan Task)
+	schedulerCompletionChan := make(chan bool)
 
-	schedulerReady := atomic.Bool{}
-	schedulerReady.Store(false)
+	s := Scheduler{
+		TaskDst:            taskChan,
+		SchedulerCompleted: schedulerCompletionChan,
+	}
 
-	scheduler := Scheduler{
-		TaskDst:        taskChan,
-		SchedulerReady: &schedulerReady,
+	p := Processor{
+		TaskQueue:          taskChan,
+		SchedulerCompleted: schedulerCompletionChan,
+		Scheduler:          s,
 	}
-	return Processor{
-		Scheduler:      scheduler,
-		TaskQueue:      taskChan,
-		SchedulerReady: &schedulerReady,
-	}
+
+	return p
 }

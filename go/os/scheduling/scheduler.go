@@ -2,28 +2,32 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"sync/atomic"
 )
 
 type SchedulingStrategy func(tasks *[]Task) Task
 
 type Scheduler struct {
-	Queue          []Task
-	TaskDst        chan<- Task
-	SwtichQueue    <-chan Task
-	SchedulerReady *atomic.Bool
+	Queue              []Task
+	TaskDst            chan<- Task
+	SwtichQueue        <-chan Task
+	SchedulerCompleted chan bool
 }
 
 func (s Scheduler) ScheduleTask(ctx context.Context, strategy SchedulingStrategy, tasks []Task) {
 	s.Queue = tasks
-
 	for {
 		if len(s.Queue) != 0 {
+			// select a task using scheduling strategy
 			nextTask := strategy(&s.Queue)
-			fmt.Println("selected task", nextTask, "task left", s.Queue)
+			RecordLog(SCHE, SELECT_TASK, nextTask)
 			s.TaskDst <- nextTask
-			s.SchedulerReady.Store(true)
+			RecordLog(SCHE, SCHEDULED_TASK, nextTask)
+		}
+
+		if len(s.Queue) == 0 {
+			// no more task
+			close(s.SchedulerCompleted)
+			return
 		}
 
 		select {
