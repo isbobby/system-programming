@@ -7,33 +7,52 @@ import (
 type SchedulingStrategy func(tasks *[]Task) Task
 
 type Scheduler struct {
-	Queue              []Task
-	TaskDst            chan<- Task
-	SwtichQueue        <-chan Task
-	SchedulerCompleted chan bool
+	readyTasks []Task
+
+	TaskDstStream         chan<- Task
+	TaskSwtichStream      <-chan Task // TODO
+	TaskInputStream       <-chan Task
+	NoMoreReadyTaskSignal chan bool
+	NoMoreInputSignal     chan bool
 }
 
-func (s Scheduler) ScheduleTask(ctx context.Context, strategy SchedulingStrategy, tasks []Task) {
-	s.Queue = tasks
+func NewScheduler() Scheduler {
+	return Scheduler{}
+}
+
+func (s Scheduler) ScheduleTask(ctx context.Context, strategy SchedulingStrategy) {
 	for {
-		if len(s.Queue) != 0 {
+		if len(s.readyTasks) != 0 {
 			// select a task using scheduling strategy
-			nextTask := strategy(&s.Queue)
+			nextTask := strategy(&s.readyTasks)
 			RecordLog(SCHE, SELECT_TASK, nextTask)
-			s.TaskDst <- nextTask
+			s.TaskDstStream <- nextTask
 			RecordLog(SCHE, SCHEDULED_TASK, nextTask)
 		}
 
-		if len(s.Queue) == 0 {
-			// no more task
-			close(s.SchedulerCompleted)
-			return
+	switchChanLoop:
+		for {
+			select {
+			case swappedTask := <-s.TaskSwtichStream:
+				s.readyTasks = append(s.readyTasks, swappedTask)
+			default:
+				break switchChanLoop
+			}
 		}
 
-		select {
-		case swappedTask := <-s.SwtichQueue:
-			s.Queue = append(s.Queue, swappedTask)
-		default:
+	inputChanLoop:
+		for {
+			select {
+			case inputTask := <-s.TaskInputStream:
+				s.readyTasks = append(s.readyTasks, inputTask)
+			case <-s.NoMoreInputSignal:
+				break inputChanLoop
+			}
+		}
+
+		if len(s.readyTasks) == 0 {
+			close(s.NoMoreReadyTaskSignal)
+			return
 		}
 	}
 }

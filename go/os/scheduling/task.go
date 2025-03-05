@@ -2,6 +2,6 @@ package main
 
 type Task struct {
 	Id        int
-	StartTime int
+	InputTime int
 	Duration  int
 }

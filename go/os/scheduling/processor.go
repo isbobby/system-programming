@@ -7,26 +7,16 @@ import (
 var systemTime atomic.Int32
 
 type Processor struct {
-	TaskQueue          <-chan Task
-	CurrentTask        *Task
-	Scheduler          Scheduler
-	SchedulerCompleted <-chan bool
+	TaskSrcStream         <-chan Task
+	NoMoreReadyTaskSignal <-chan bool
+
+	CurrentTask *Task
 }
 
-func New() Processor {
-	taskChan := make(chan Task)
-	schedulerCompletionChan := make(chan bool)
-
-	s := Scheduler{
-		TaskDst:            taskChan,
-		SchedulerCompleted: schedulerCompletionChan,
-	}
-
+func New(TaskSrcStream <-chan Task, schedulerCompletionChan <-chan bool) Processor {
 	p := Processor{
-		TaskQueue:          taskChan,
-		SchedulerCompleted: schedulerCompletionChan,
-		Scheduler:          s,
+		TaskSrcStream:         TaskSrcStream,
+		NoMoreReadyTaskSignal: schedulerCompletionChan,
 	}
-
 	return p
 }

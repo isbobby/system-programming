@@ -23,9 +23,11 @@ const (
 	COMPLETE_TASK  = "complete task"
 	SELECT_TASK    = "selected task"
 	SCHEDULED_TASK = "scheduled task"
+	INPUT_TASK     = "input task"
 
 	PROC = "Processor"
 	SCHE = "Scheduler"
+	IO   = "IO Stream"
 )
 
 func (l *ExecLog) String() string {
@@ -35,7 +37,7 @@ func (l *ExecLog) String() string {
 	} else if l.SystemTime < 100 {
 		whiteSpace = append(whiteSpace, []byte{' '}...)
 	}
-	return fmt.Sprintf("[time:%v%ds][%v] %v on taskID:%d", string(whiteSpace), l.SystemTime, l.Actor, l.Action, l.Task.Id)
+	return fmt.Sprintf("[time:%v%ds][%v] %v, taskID:%d", string(whiteSpace), l.SystemTime, l.Actor, l.Action, l.Task.Id)
 }
 
 func RecordLog(actor string, action string, task Task) {
@@ -73,7 +75,7 @@ func ShowLog(showExecLog bool) {
 		completeTime := 0
 
 		for _, log := range logs {
-			queueTime = log.Task.StartTime
+			queueTime = log.Task.InputTime
 			if log.Action == COMPLETE_TASK {
 				completeTime = log.SystemTime
 			}
