@@ -23,13 +23,14 @@ func (s InputStreamer) InputTask(ctx context.Context) {
 		}
 
 		for s.tasks[0].InputTime > int(systemTime.Load()) {
+			RecordLog(IO, WAIT_TASK, s.tasks[0])
 			select {
 			case <-ctx.Done():
 				panic("Timeout, abort waiting in input streamer")
 			default:
 				// continue waiting
+				systemTime.Add(1)
 			}
-			// systemTime.Add(1)
 		}
 
 		currentInput := []Task{}
@@ -39,8 +40,8 @@ func (s InputStreamer) InputTask(ctx context.Context) {
 		}
 
 		for _, task := range currentInput {
-			RecordLog(IO, INPUT_TASK, task)
 			s.TaskInputStream <- task
+			RecordLog(IO, INPUT_TASK, task)
 		}
 		s.NoMoreInputSignal <- true
 	}

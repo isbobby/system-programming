@@ -24,6 +24,7 @@ const (
 	SELECT_TASK    = "selected task"
 	SCHEDULED_TASK = "scheduled task"
 	INPUT_TASK     = "input task"
+	WAIT_TASK      = "waiting on task"
 
 	PROC = "Processor"
 	SCHE = "Scheduler"

@@ -35,3 +35,16 @@ var caseTwo []Task = []Task{
 		Duration:  10,
 	},
 }
+
+var caseThree []Task = []Task{
+	{
+		Id:        1,
+		InputTime: 0,
+		Duration:  10,
+	},
+	{
+		Id:        2,
+		InputTime: 13,
+		Duration:  10,
+	},
+}

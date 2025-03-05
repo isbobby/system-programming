@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	cases := [][]Task{caseOne, caseTwo}
+	cases := [][]Task{caseOne, caseTwo, caseThree}
 	for i := range cases {
 		// reset machine state
 		execStats = ExecStats{
