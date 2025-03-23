@@ -1,15 +1,28 @@
 package main
 
+import "sync/atomic"
+
 type Job struct {
-	Priority int
-	Inputs   []JobInput
+	ScheduledTime int
+	Priority      int
+	Inputs        []JobInput
+	TimeAllotment atomic.Int32
 }
 
-type JobInput string
+type JobInput struct {
+	Cycle int
+	Type  string
+}
 
 var (
-	IOInstruction  JobInput = "IO"
-	CPUInstruction JobInput = "CPU"
+	IOInstruction JobInput = JobInput{
+		Cycle: 5,
+		Type:  "IO",
+	}
+	CPUInstruction JobInput = JobInput{
+		Cycle: 1,
+		Type:  "CPU",
+	}
 )
 
 func NewJob(maxPriority int, instructions []JobInput) Job {
