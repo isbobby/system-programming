@@ -34,9 +34,10 @@ var (
 	}
 )
 
-func NewJob(ID int, InstructionStack []JobInput) *Job {
+func NewJob(ID int, ScheduledTime int, InstructionStack []JobInput) *Job {
 	return &Job{
 		ID:               ID,
+		ScheduledTime:    ScheduledTime,
 		InstructionStack: InstructionStack,
 	}
 }

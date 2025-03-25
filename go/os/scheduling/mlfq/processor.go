@@ -57,31 +57,32 @@ func (p *Processor) runCurrentJob() {
 	for {
 		fmt.Println("[SYS TIME]:", p.SystemClock.Time.Load())
 		if p.runningJob.TimeAllotment.Load() == 0 {
-			fmt.Println("Job no more time allotment, expire", p.runningJob.ID)
+			fmt.Println("(P) Job no more time allotment, expire", p.runningJob.ID)
 			break
 		}
 
 		if len(p.runningJob.InstructionStack) == 0 {
-			fmt.Println("Job no more instruction, exit")
+			fmt.Println("(P) Job no more instruction, exit")
 			break
 		}
 
 		instruction := p.runningJob.InstructionStack[len(p.runningJob.InstructionStack)-1]
-		fmt.Println("Executing job", p.runningJob.ID, "instruction:", instruction, "Time left", p.runningJob.TimeAllotment.Load())
-		p.runningJob.InstructionStack = p.runningJob.InstructionStack[:len(p.runningJob.InstructionStack)-1]
+		fmt.Println("(P) Executing job", p.runningJob.ID, "instruction:", instruction, "Time left", p.runningJob.TimeAllotment.Load())
 
 		if instruction.IsCPU() {
+			p.runningJob.InstructionStack = p.runningJob.InstructionStack[:len(p.runningJob.InstructionStack)-1]
 			p.runningJob.TimeAllotment.Add(-1)
 			p.SystemClock.AdvanceTime()
 		} else {
 			p.pToIOChan <- p.runningJob
+			fmt.Println("(P) Sent IO job", p.runningJob.ID, "back to IO")
 			p.runningJob = nil
 			return
 		}
 	}
 
 	if len(p.runningJob.InstructionStack) > 0 {
-		fmt.Println("Sending expired job to MLFQ")
+		fmt.Println("(P) Sending expired job to MLFQ")
 		p.pToSChan <- p.runningJob
 	}
 
