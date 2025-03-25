@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sort"
 )
 
@@ -41,7 +40,7 @@ func (s *IOStream) DoIO(ctx context.Context) {
 	for {
 		select {
 		case job := <-s.pToIOChan:
-			fmt.Println("(IO) received job from P to do IO", job.ID)
+			IOLog("received job from processor", "ID", job.ID)
 			if len(job.InstructionStack) == 0 {
 				// TODO log error
 				continue
@@ -56,7 +55,7 @@ func (s *IOStream) DoIO(ctx context.Context) {
 
 				completeTime := int(currentSystemTime) + instruction.Cycle
 
-				fmt.Println("(IO) Doing IO, expected complet time:", completeTime)
+				IOLog("run IO instruction", "ID", job.ID, "Completion Time", completeTime)
 
 				for completeTime < int(s.SystemTime.Time.Load()) {
 					// DO IO
@@ -65,12 +64,10 @@ func (s *IOStream) DoIO(ctx context.Context) {
 				job.InstructionStack = job.InstructionStack[:len(job.InstructionStack)-1]
 
 				if len(job.InstructionStack) > 0 {
-					// back to S without changing priority
-					fmt.Println("(IO) job IO completed, ID:", job.ID, "sending back to scheduler")
 					s.ioToSChan <- job
+					IOLog("job IO completed and sent to scheduler", "ID", job.ID)
 				} else {
-					fmt.Println("(IO) job IO completed, ID:", job.ID)
-					// Log job completion
+					IOLog("job IO completed", "ID", job.ID)
 				}
 			}
 

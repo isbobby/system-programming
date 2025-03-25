@@ -52,13 +52,17 @@ func printLog(actor actor, level logLevel, message string, keyValuePairs ...inte
 	// trim space
 	if len(kvString) > 0 {
 		kvString = kvString[:len(kvString)-1]
+		head := []byte{byte('[')}
+		head = append(head, kvString...)
+		head = append(head, ']')
+		kvString = head
 	}
 
-	if level == warnLevel {
-		fmt.Printf("\033[0;33m[%v] %v [%v]\n", actor, message, string(kvString))
-	} else if level == errLevel {
-		fmt.Printf("\033[0;31m[%v] %v [%v]\n", actor, message, string(kvString))
+	if actor == IO {
+		fmt.Printf("\033[0;33m[%v] %v %v\n", actor, message, string(kvString))
+	} else if actor == S {
+		fmt.Printf("\033[0;34m[%v] %v %v\n", actor, message, string(kvString))
 	} else {
-		fmt.Printf("[%v] %v [%v]\n", actor, message, string(kvString))
+		fmt.Printf("\033[0;32m[%v] %v %v\n", actor, message, string(kvString))
 	}
 }

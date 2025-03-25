@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 )
 
 type MLFQ struct {
@@ -64,7 +63,7 @@ func (q *MLFQ) AcceptJobFromIO(ctx context.Context) {
 	for {
 		select {
 		case job := <-q.ioToSChan:
-			fmt.Println("MLFQ received job from IO")
+			MLFQLog("MLFQ received job from IO", "ID", job.ID)
 			q.push(job)
 		case <-ctx.Done():
 			return
@@ -78,7 +77,7 @@ func (q *MLFQ) AcceptExpiredJobFromProc(ctx context.Context) {
 	for {
 		select {
 		case job := <-q.pToSChan:
-			fmt.Println("MLFQ received expired job from CPU")
+			MLFQLog("MLFQ received expired job from CPU", "ID", job.ID)
 			job.DecreasePriority()
 			q.push(job)
 		case <-ctx.Done():
@@ -95,7 +94,7 @@ func (q *MLFQ) ScheduleJob(ctx context.Context) {
 			select {
 			case job := <-q.Queues[i]:
 				q.sToPChan <- job
-				fmt.Println("MLFQ Sent job to P")
+				MLFQLog("MLFQ sent job to CPU", "ID", job.ID)
 			case <-ctx.Done():
 				close(q.sToPChan)
 				return
