@@ -6,7 +6,7 @@ import (
 )
 
 type Processor struct {
-	RunningJob  *Job
+	runningJob  *Job
 	SystemClock *Clock
 	MLFQ        *MLFQ
 	sToPChan    <-chan *Job
@@ -16,7 +16,7 @@ type Processor struct {
 
 func NewProcessor(c *Clock, sToPChan <-chan *Job, pToSChan chan<- *Job, pToIOChan chan<- *Job) Processor {
 	return Processor{
-		RunningJob:  nil,
+		runningJob:  nil,
 		SystemClock: c,
 		sToPChan:    sToPChan,
 		pToIOChan:   pToIOChan,
@@ -33,18 +33,57 @@ func (p *Processor) Run(ctx context.Context) {
 		default:
 		}
 
-		if p.RunningJob != nil {
-			// execute and advance time
-
+		if p.runningJob != nil {
+			p.runCurrentJob()
 		} else {
-			p.MLFQ.ScheduleJob()
-
 			nextJob, open := <-p.sToPChan
 			if !open {
+				fmt.Println("No more jobs from scheduler, processor exits")
 				return
 			}
 
-			p.RunningJob = nextJob
+			p.runningJob = nextJob
 		}
 	}
+}
+
+func (p *Processor) runCurrentJob() {
+	if len(p.runningJob.InstructionStack) == 0 {
+		p.runningJob = nil
+		return
+	}
+
+	// CPU Cycle
+	for {
+		fmt.Println("[SYS TIME]:", p.SystemClock.Time.Load())
+		if p.runningJob.TimeAllotment.Load() == 0 {
+			fmt.Println("Job no more time allotment, expire", p.runningJob.ID)
+			break
+		}
+
+		if len(p.runningJob.InstructionStack) == 0 {
+			fmt.Println("Job no more instruction, exit")
+			break
+		}
+
+		instruction := p.runningJob.InstructionStack[len(p.runningJob.InstructionStack)-1]
+		fmt.Println("Executing job", p.runningJob.ID, "instruction:", instruction, "Time left", p.runningJob.TimeAllotment.Load())
+		p.runningJob.InstructionStack = p.runningJob.InstructionStack[:len(p.runningJob.InstructionStack)-1]
+
+		if instruction.IsCPU() {
+			p.runningJob.TimeAllotment.Add(-1)
+			p.SystemClock.AdvanceTime()
+		} else {
+			p.pToIOChan <- p.runningJob
+			p.runningJob = nil
+			return
+		}
+	}
+
+	if len(p.runningJob.InstructionStack) > 0 {
+		fmt.Println("Sending expired job to MLFQ")
+		p.pToSChan <- p.runningJob
+	}
+
+	p.runningJob = nil
 }

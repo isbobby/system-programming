@@ -1,5 +1,10 @@
 package main
 
+import (
+	"context"
+	"fmt"
+)
+
 type MLFQ struct {
 	MaxPriority        int
 	NumQueue           int
@@ -55,26 +60,74 @@ func (q *MLFQ) Reset() {
 	}
 }
 
-func (q *MLFQ) ScheduleJob() {
-	for i := q.MaxPriority; i >= 0; i-- {
+func (q *MLFQ) AcceptJobFromIO(ctx context.Context) {
+	for {
 		select {
-		case job := <-q.Queues[i]:
-			q.sToPChan <- job
+		case job := <-q.ioToSChan:
+			fmt.Println("MLFQ received job from IO")
+			q.push(job)
+		case <-ctx.Done():
+			return
 		default:
 			continue
 		}
 	}
-	close(q.sToPChan)
 }
 
-func (q *MLFQ) Push(j *Job) {
-	if j.Priority > q.MaxPriority {
+func (q *MLFQ) AcceptExpiredJobFromProc(ctx context.Context) {
+	for {
+		select {
+		case job := <-q.pToSChan:
+			fmt.Println("MLFQ received expired job from CPU")
+			job.DecreasePriority()
+			q.push(job)
+		case <-ctx.Done():
+			return
+		default:
+			continue
+		}
+	}
+}
+
+func (q *MLFQ) ScheduleJob(ctx context.Context) {
+	for {
+		for i := q.MaxPriority; i >= 0; i-- {
+			select {
+			case job := <-q.Queues[i]:
+				q.sToPChan <- job
+				fmt.Println("MLFQ Sent job to P")
+			case <-ctx.Done():
+				close(q.sToPChan)
+				return
+			default:
+				continue
+			}
+		}
+	}
+}
+
+func (q *MLFQ) push(j *Job) {
+	if j.Priority == nil {
+		j.Priority = &q.MaxPriority
+	}
+
+	if *j.Priority > q.MaxPriority {
 		panic("err job with higher priority than MLFQ allows")
 	}
 
-	timeAlloted := q.QueueTimeAllotment[j.Priority]
+	timeAlloted := q.QueueTimeAllotment[*j.Priority]
 
 	j.TimeAllotment.Store(int32(timeAlloted))
 
-	q.Queues[j.Priority] <- j
+	q.Queues[*j.Priority] <- j
+}
+
+func (q *MLFQ) Run(ctx context.Context) {
+	go q.AcceptExpiredJobFromProc(ctx)
+
+	go q.AcceptJobFromIO(ctx)
+
+	go q.ScheduleJob(ctx)
+
+	go q.Reset()
 }

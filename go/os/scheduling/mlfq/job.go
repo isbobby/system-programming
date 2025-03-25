@@ -3,15 +3,24 @@ package main
 import "sync/atomic"
 
 type Job struct {
-	ScheduledTime int
-	Priority      int
-	Inputs        []JobInput
-	TimeAllotment atomic.Int32
+	ID               int
+	ScheduledTime    int
+	Priority         *int
+	InstructionStack []JobInput
+	TimeAllotment    atomic.Int32
 }
 
 type JobInput struct {
 	Cycle int
 	Type  string
+}
+
+func (i JobInput) IsIO() bool {
+	return i.Type == "IO"
+}
+
+func (i JobInput) IsCPU() bool {
+	return i.Type == "CPU"
 }
 
 var (
@@ -25,17 +34,17 @@ var (
 	}
 )
 
-func NewJob(maxPriority int, instructions []JobInput) Job {
-	return Job{
-		Priority: maxPriority,
-		Inputs:   instructions,
+func NewJob(ID int, InstructionStack []JobInput) *Job {
+	return &Job{
+		ID:               ID,
+		InstructionStack: InstructionStack,
 	}
 }
 
 func (j *Job) DecreasePriority() {
-	if j.Priority == 0 {
+	if *j.Priority == 0 {
 		return
 	}
 
-	j.Priority -= 1
+	*j.Priority -= 1
 }
