@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 )
 
 type Processor struct {
@@ -28,7 +27,7 @@ func (p *Processor) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("Time out for simulation")
+			CPUErrLog("time out signal, processor exiting")
 			return
 		default:
 		}
@@ -38,10 +37,9 @@ func (p *Processor) Run(ctx context.Context) {
 		} else {
 			nextJob, open := <-p.sToPChan
 			if !open {
-				fmt.Println("No more jobs from scheduler, processor exits")
+				CPUWarnLog("No more jobs from scheduler, processor exits")
 				return
 			}
-
 			p.runningJob = nextJob
 		}
 	}
@@ -55,34 +53,32 @@ func (p *Processor) runCurrentJob() {
 
 	// CPU Cycle
 	for {
-		fmt.Println("[SYS TIME]:", p.SystemClock.Time.Load())
 		if p.runningJob.TimeAllotment.Load() == 0 {
-			fmt.Println("(P) Job no more time allotment, expire", p.runningJob.ID)
+			CPULog("expire job with no more time allotment", "ID", p.runningJob.ID)
 			break
 		}
 
 		if len(p.runningJob.InstructionStack) == 0 {
-			fmt.Println("(P) Job no more instruction, exit")
+			CPULog("job with no more instruction completes", "ID", p.runningJob.ID)
 			break
 		}
 
 		instruction := p.runningJob.InstructionStack[len(p.runningJob.InstructionStack)-1]
-		fmt.Println("(P) Executing job", p.runningJob.ID, "instruction:", instruction, "Time left", p.runningJob.TimeAllotment.Load())
-
+		CPULog("running job", "ID", p.runningJob.ID, "Instruction Left", len(p.runningJob.InstructionStack), "Time Left", p.runningJob.TimeAllotment.Load())
 		if instruction.IsCPU() {
 			p.runningJob.InstructionStack = p.runningJob.InstructionStack[:len(p.runningJob.InstructionStack)-1]
 			p.runningJob.TimeAllotment.Add(-1)
 			p.SystemClock.AdvanceTime()
 		} else {
 			p.pToIOChan <- p.runningJob
-			fmt.Println("(P) Sent IO job", p.runningJob.ID, "back to IO")
+			CPULog("sent job to IO device", "ID", p.runningJob.ID)
 			p.runningJob = nil
 			return
 		}
 	}
 
 	if len(p.runningJob.InstructionStack) > 0 {
-		fmt.Println("(P) Sending expired job to MLFQ")
+		CPULog("sent expired job to MLFQ", "ID", p.runningJob.ID)
 		p.pToSChan <- p.runningJob
 	}
 
