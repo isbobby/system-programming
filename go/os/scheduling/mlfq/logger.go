@@ -18,27 +18,31 @@ var (
 	errLevel  logLevel = 3
 )
 
-func CPULog(message string, keyValuePairs ...interface{}) {
-	printLog(P, infoLevel, message, keyValuePairs...)
+type Logger struct {
+	SystemTime *Clock
 }
 
-func CPUWarnLog(message string, keyValuePairs ...interface{}) {
-	printLog(P, warnLevel, message, keyValuePairs...)
+func (l Logger) CPULog(message string, keyValuePairs ...interface{}) {
+	l.printLog(P, infoLevel, message, keyValuePairs...)
 }
 
-func CPUErrLog(message string, keyValuePairs ...interface{}) {
-	printLog(P, errLevel, message, keyValuePairs...)
+func (l Logger) CPUWarnLog(message string, keyValuePairs ...interface{}) {
+	l.printLog(P, warnLevel, message, keyValuePairs...)
 }
 
-func IOLog(message string, keyValuePairs ...interface{}) {
-	printLog(IO, infoLevel, message, keyValuePairs...)
+func (l Logger) CPUErrLog(message string, keyValuePairs ...interface{}) {
+	l.printLog(P, errLevel, message, keyValuePairs...)
 }
 
-func MLFQLog(message string, keyValuePairs ...interface{}) {
-	printLog(S, infoLevel, message, keyValuePairs...)
+func (l Logger) IOLog(message string, keyValuePairs ...interface{}) {
+	l.printLog(IO, infoLevel, message, keyValuePairs...)
 }
 
-func printLog(actor actor, level logLevel, message string, keyValuePairs ...interface{}) {
+func (l Logger) MLFQLog(message string, keyValuePairs ...interface{}) {
+	l.printLog(S, infoLevel, message, keyValuePairs...)
+}
+
+func (l Logger) printLog(actor actor, level logLevel, message string, keyValuePairs ...interface{}) {
 	kvString := []byte{}
 
 	if len(keyValuePairs)%2 == 0 {
@@ -59,10 +63,10 @@ func printLog(actor actor, level logLevel, message string, keyValuePairs ...inte
 	}
 
 	if actor == IO {
-		fmt.Printf("\033[0;33m[%v] %v %v\n", actor, message, string(kvString))
+		fmt.Printf("\033[0;33m[T:%v][%v] %v %v\n", l.SystemTime.Time.Load(), actor, message, string(kvString))
 	} else if actor == S {
-		fmt.Printf("\033[0;34m[%v] %v %v\n", actor, message, string(kvString))
+		fmt.Printf("\033[0;34m[T:%v][%v] %v %v\n", l.SystemTime.Time.Load(), actor, message, string(kvString))
 	} else {
-		fmt.Printf("\033[0;32m[%v] %v %v\n", actor, message, string(kvString))
+		fmt.Printf("\033[0;32m[T:%v][%v] %v %v\n", l.SystemTime.Time.Load(), actor, message, string(kvString))
 	}
 }

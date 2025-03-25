@@ -17,9 +17,11 @@ type MLFQ struct {
 	ioToSChan <-chan *Job
 
 	SystemClock *Clock
+
+	logger *Logger
 }
 
-func NewMLFQ(maxPriority int, queueTime []int, resetInterval int, queueSize int, clock *Clock, sToPChan chan<- *Job, ioToSChan <-chan *Job, pToSChan <-chan *Job) MLFQ {
+func NewMLFQ(maxPriority int, queueTime []int, resetInterval int, queueSize int, clock *Clock, sToPChan chan<- *Job, ioToSChan <-chan *Job, pToSChan <-chan *Job, logger *Logger) MLFQ {
 	timeAllotment := map[int]int{}
 	queues := []chan *Job{}
 	for priority, time := range queueTime {
@@ -38,6 +40,7 @@ func NewMLFQ(maxPriority int, queueTime []int, resetInterval int, queueSize int,
 		sToPChan:  sToPChan,
 		ioToSChan: ioToSChan,
 		pToSChan:  pToSChan,
+		logger:    logger,
 	}
 }
 
@@ -63,7 +66,7 @@ func (q *MLFQ) AcceptJobFromIO(ctx context.Context) {
 	for {
 		select {
 		case job := <-q.ioToSChan:
-			MLFQLog("MLFQ received job from IO", "ID", job.ID)
+			q.logger.MLFQLog("MLFQ received job from IO", "ID", job.ID)
 			q.push(job)
 		case <-ctx.Done():
 			return
@@ -77,7 +80,7 @@ func (q *MLFQ) AcceptExpiredJobFromProc(ctx context.Context) {
 	for {
 		select {
 		case job := <-q.pToSChan:
-			MLFQLog("MLFQ received expired job from CPU", "ID", job.ID)
+			q.logger.MLFQLog("MLFQ received expired job from CPU", "ID", job.ID)
 			job.DecreasePriority()
 			q.push(job)
 		case <-ctx.Done():
@@ -94,7 +97,7 @@ func (q *MLFQ) ScheduleJob(ctx context.Context) {
 			select {
 			case job := <-q.Queues[i]:
 				q.sToPChan <- job
-				MLFQLog("MLFQ sent job to CPU", "ID", job.ID)
+				q.logger.MLFQLog("MLFQ sent job to CPU", "ID", job.ID)
 			case <-ctx.Done():
 				close(q.sToPChan)
 				return

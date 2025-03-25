@@ -10,37 +10,42 @@ type IOStream struct {
 	ioToSChan     chan<- *Job
 	pToIOChan     <-chan *Job
 	SystemTime    Clock
+
+	logger *Logger
 }
 
-func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job) *IOStream {
+func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, logger *Logger) *IOStream {
 	return &IOStream{
 		ScheduledJobs: initialJobs,
 		ioToSChan:     ioToSChan,
 		pToIOChan:     pToIOChan,
+		logger:        logger,
 	}
 }
 
-func (s *IOStream) ScheduleInput(ctx context.Context, cancel context.CancelFunc) {
+func (s *IOStream) ScheduleInput(ctx context.Context) {
 	sort.Slice(s.ScheduledJobs, func(i, j int) bool {
 		return s.ScheduledJobs[i].ScheduledTime < s.ScheduledJobs[j].ScheduledTime
 	})
 
-	for i := range s.ScheduledJobs {
-		job := s.ScheduledJobs[i]
+	for len(s.ScheduledJobs) > 0 {
+		job := s.ScheduledJobs[0]
+		s.ScheduledJobs = s.ScheduledJobs[1:]
 
 		for job.ScheduledTime > int(s.SystemTime.Time.Load()) {
-			break
 		}
 
+		s.logger.IOLog("input new job", "ID", job.ID)
 		s.ioToSChan <- job
 	}
+
 }
 
 func (s *IOStream) DoIO(ctx context.Context) {
 	for {
 		select {
 		case job := <-s.pToIOChan:
-			IOLog("received job from processor", "ID", job.ID)
+			s.logger.IOLog("received job from processor", "ID", job.ID)
 			if len(job.InstructionStack) == 0 {
 				// TODO log error
 				continue
@@ -55,7 +60,7 @@ func (s *IOStream) DoIO(ctx context.Context) {
 
 				completeTime := int(currentSystemTime) + instruction.Cycle
 
-				IOLog("run IO instruction", "ID", job.ID, "Completion Time", completeTime)
+				s.logger.IOLog("run IO instruction", "ID", job.ID, "Completion Time", completeTime)
 
 				for completeTime < int(s.SystemTime.Time.Load()) {
 					// DO IO
@@ -65,9 +70,9 @@ func (s *IOStream) DoIO(ctx context.Context) {
 
 				if len(job.InstructionStack) > 0 {
 					s.ioToSChan <- job
-					IOLog("job IO completed and sent to scheduler", "ID", job.ID)
+					s.logger.IOLog("job IO completed and sent to scheduler", "ID", job.ID)
 				} else {
-					IOLog("job IO completed", "ID", job.ID)
+					s.logger.IOLog("job IO completed", "ID", job.ID)
 				}
 			}
 
@@ -81,5 +86,5 @@ func (s *IOStream) DoIO(ctx context.Context) {
 
 func (s *IOStream) Run(ctx context.Context, cancel context.CancelFunc) {
 	go s.DoIO(ctx)
-	go s.ScheduleInput(ctx, cancel)
+	go s.ScheduleInput(ctx)
 }
