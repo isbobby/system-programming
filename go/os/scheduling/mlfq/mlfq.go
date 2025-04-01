@@ -2,116 +2,147 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sort"
 )
+
+type QueueConfig struct {
+	Priority      int
+	TimeAllotment int
+}
+
+type MLFQConfig struct {
+	QueueConfigs  []QueueConfig
+	ResetInterval int
+	QueueSize     int
+
+	SToPChan   chan<- *Job
+	IOToSChan  <-chan *Job
+	PToSChan   <-chan *Job
+	PToSSignal <-chan interface{}
+
+	Logger *AuditLogger
+}
+
+func (cfg MLFQConfig) Validate() error {
+	if cfg.SToPChan == nil || cfg.IOToSChan == nil || cfg.PToSChan == nil || cfg.PToSSignal == nil {
+		return errors.New("err attempt to initialise MLFQ with some nil channel")
+	}
+
+	if cfg.QueueSize < 1 {
+		return errors.New("err MLFQ queue size must be at least 1")
+	}
+
+	sort.Slice(cfg.QueueConfigs, func(a, b int) bool {
+		return cfg.QueueConfigs[a].Priority < cfg.QueueConfigs[b].Priority
+	})
+
+	for i := len(cfg.QueueConfigs) - 1; i >= 0; i-- {
+		if cfg.QueueConfigs[i].Priority != i {
+			return fmt.Errorf("err priority level, expected %v, got %v", i, cfg.QueueConfigs[i].Priority)
+		}
+	}
+
+	return nil
+}
 
 type MLFQ struct {
 	MaxPriority        int
 	NumQueue           int
 	ResetInterval      int
-	Queues             []chan *Job
+	QueuesByPriority   map[int]chan *Job
 	QueueTimeAllotment map[int]int
 
-	sToPChan chan<- *Job
+	sToPChan   chan<- *Job
+	pToSChan   <-chan *Job
+	pToSSignal <-chan interface{}
+	ioToSChan  <-chan *Job
 
-	pToSChan  <-chan *Job
-	ioToSChan <-chan *Job
-
-	SystemClock *Clock
-
-	logger *Logger
+	logger *AuditLogger
 }
 
-func NewMLFQ(maxPriority int, queueTime []int, resetInterval int, queueSize int, clock *Clock, sToPChan chan<- *Job, ioToSChan <-chan *Job, pToSChan <-chan *Job, logger *Logger) MLFQ {
+func NewMLFQ(cfg MLFQConfig) MLFQ {
+	if err := cfg.Validate(); err != nil {
+		panic(fmt.Errorf("failed to initialise MLFQ due to config error: %v", err))
+	}
+
+	mlfq := MLFQ{
+		ResetInterval: cfg.ResetInterval,
+		pToSSignal:    cfg.PToSSignal,
+
+		sToPChan:  cfg.SToPChan,
+		ioToSChan: cfg.IOToSChan,
+		pToSChan:  cfg.PToSChan,
+		logger:    cfg.Logger,
+	}
+
 	timeAllotment := map[int]int{}
-	queues := []chan *Job{}
-	for priority, time := range queueTime {
-		newQueue := make(chan *Job, queueSize)
-		timeAllotment[priority] = time
-		queues = append(queues, newQueue)
+	QueuesByPriority := map[int]chan *Job{}
+	for _, config := range cfg.QueueConfigs {
+		newQueue := make(chan *Job, cfg.QueueSize)
+		timeAllotment[config.Priority] = config.TimeAllotment
+		QueuesByPriority[config.Priority] = newQueue
+		mlfq.MaxPriority = max(mlfq.MaxPriority, config.Priority)
 	}
 
-	return MLFQ{
-		MaxPriority:        maxPriority,
-		NumQueue:           len(queues),
-		Queues:             queues,
-		QueueTimeAllotment: timeAllotment,
-		ResetInterval:      resetInterval,
+	mlfq.QueueTimeAllotment = timeAllotment
+	mlfq.QueuesByPriority = QueuesByPriority
 
-		sToPChan:  sToPChan,
-		ioToSChan: ioToSChan,
-		pToSChan:  pToSChan,
-		logger:    logger,
-	}
+	return mlfq
 }
 
 func (q *MLFQ) Reset() {
 	jobs := []*Job{}
 
-	// remove all jobs from non-max priority queues
-	for i := q.MaxPriority - 1; i >= 0; i-- {
-		select {
-		case job := <-q.Queues[i]:
-			jobs = append(jobs, job)
-		default:
+	// remove all jobs from non-max priority queues, making use of reset interval
+	for prio, queue := range q.QueuesByPriority {
+		if prio == q.MaxPriority {
 			continue
+		}
+
+		for len(queue) > 0 {
+			jobs = append(jobs, <-queue)
 		}
 	}
 
 	for _, job := range jobs {
-		q.Queues[q.MaxPriority] <- job
+		q.QueuesByPriority[q.MaxPriority] <- job
 	}
 }
 
 func (q *MLFQ) AcceptJobFromIO(ctx context.Context) {
-	for {
-		select {
-		case job := <-q.ioToSChan:
-			q.logger.MLFQLog("MLFQ received job from IO", "ID", job.ID)
-			q.push(job)
-		case <-ctx.Done():
-			return
-		default:
-			continue
-		}
+	select {
+	case job := <-q.ioToSChan:
+		q.logger.MLFQLog("MLFQ received job from IO", "ID", job.ID)
+		q.push(job)
+	case <-ctx.Done():
+		return
+	default:
+		return
 	}
 }
 
 func (q *MLFQ) AcceptExpiredJobFromProc(ctx context.Context) {
-	for {
-		select {
-		case job := <-q.pToSChan:
-			q.logger.MLFQLog("MLFQ received expired job from CPU", "ID", job.ID)
-			job.DecreasePriority()
-			q.push(job)
-		case <-ctx.Done():
-			return
-		default:
-			continue
-		}
-	}
-}
-
-func (q *MLFQ) ScheduleJob(ctx context.Context) {
-	for {
-		for i := q.MaxPriority; i >= 0; i-- {
-			select {
-			case job := <-q.Queues[i]:
-				q.sToPChan <- job
-				q.logger.MLFQLog("MLFQ sent job to CPU", "ID", job.ID)
-			case <-ctx.Done():
-				close(q.sToPChan)
-				return
-			default:
-				continue
-			}
-		}
+	select {
+	case job := <-q.pToSChan:
+		job.DecreasePriority()
+		q.logger.MLFQLog("MLFQ received expired job from CPU", "ID", job.ID, "New Priority", *job.Priority)
+		q.push(job)
+	case <-ctx.Done():
+		return
+	default:
+		return
 	}
 }
 
 func (q *MLFQ) push(j *Job) {
 	if j.Priority == nil {
-		j.Priority = &q.MaxPriority
+		var newJobPriority int = q.MaxPriority
+		j.Priority = &newJobPriority
 	}
+
+	q.logger.MLFQLog("inserting job to queue", JobIDKey, j.ID, "priority", *j.Priority)
 
 	if *j.Priority > q.MaxPriority {
 		panic("err job with higher priority than MLFQ allows")
@@ -121,15 +152,58 @@ func (q *MLFQ) push(j *Job) {
 
 	j.TimeAllotment.Store(int32(timeAlloted))
 
-	q.Queues[*j.Priority] <- j
+	q.QueuesByPriority[*j.Priority] <- j
+}
+
+func (q *MLFQ) pollForReadyTasks(ctx context.Context) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+			for i := range q.QueuesByPriority {
+				if len(q.QueuesByPriority[i]) > 0 {
+					return true
+				}
+			}
+			return false
+		}
+	}
+}
+
+func (q *MLFQ) HandleProcSignal(ctx context.Context) {
+	// only run when processor is idle
+	for {
+		<-q.pToSSignal
+		// go q.Reset()
+		q.logger.MLFQLog("received scheduling signal from CPU")
+
+		for !q.pollForReadyTasks(ctx) {
+			q.AcceptJobFromIO(ctx)
+			q.AcceptExpiredJobFromProc(ctx)
+		}
+
+		q.scheduleJob(ctx)
+	}
+}
+
+func (q *MLFQ) scheduleJob(ctx context.Context) {
+	q.logger.MLFQLog("Scheduling from highest priority")
+	for i := q.MaxPriority; i >= 0; i-- {
+		select {
+		case job := <-q.QueuesByPriority[i]:
+			q.sToPChan <- job
+			q.logger.MLFQLog("MLFQ sent job to CPU", "ID", job.ID)
+			return
+		case <-ctx.Done():
+			close(q.sToPChan)
+			return
+		default:
+			continue
+		}
+	}
 }
 
 func (q *MLFQ) Run(ctx context.Context) {
-	go q.AcceptExpiredJobFromProc(ctx)
-
-	go q.AcceptJobFromIO(ctx)
-
-	go q.ScheduleJob(ctx)
-
-	go q.Reset()
+	go q.HandleProcSignal(ctx)
 }

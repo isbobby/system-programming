@@ -9,17 +9,18 @@ type IOStream struct {
 	ScheduledJobs []*Job
 	ioToSChan     chan<- *Job
 	pToIOChan     <-chan *Job
-	SystemTime    Clock
+	SystemTime    *Clock
 
-	logger *Logger
+	logger *AuditLogger
 }
 
-func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, logger *Logger) *IOStream {
+func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, logger *AuditLogger, systemTime *Clock) *IOStream {
 	return &IOStream{
 		ScheduledJobs: initialJobs,
 		ioToSChan:     ioToSChan,
 		pToIOChan:     pToIOChan,
 		logger:        logger,
+		SystemTime:    systemTime,
 	}
 }
 
@@ -31,14 +32,13 @@ func (s *IOStream) ScheduleInput(ctx context.Context) {
 	for len(s.ScheduledJobs) > 0 {
 		job := s.ScheduledJobs[0]
 		s.ScheduledJobs = s.ScheduledJobs[1:]
-
 		for job.ScheduledTime > int(s.SystemTime.Time.Load()) {
+			// time.Sleep(time.Duration(500 * float64(time.Millisecond)))
 		}
 
 		s.logger.IOLog("input new job", "ID", job.ID)
 		s.ioToSChan <- job
 	}
-
 }
 
 func (s *IOStream) DoIO(ctx context.Context) {
