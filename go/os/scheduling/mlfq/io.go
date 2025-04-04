@@ -6,29 +6,25 @@ import (
 )
 
 type IOStream struct {
-	scheduledJobs     []*Job
-	ioCompletedSignal chan<- interface{}
+	scheduledJobs []*Job
 
+	clockSignal <-chan interface{}
 	ioToSChan   chan<- *Job
 	pToIOChan   <-chan *Job
-	sToIOSignal <-chan interface{}
-	clockSignal <-chan interface{}
 
 	systemTime *Clock
 
 	logger *AuditLogger
 }
 
-func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, sToIOSignal <-chan interface{}, ioCompletedSignal chan<- interface{}, logger *AuditLogger, clockSignal <-chan interface{}, clock *Clock) *IOStream {
+func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, logger *AuditLogger, clockSignal <-chan interface{}, clock *Clock) *IOStream {
 	return &IOStream{
-		scheduledJobs:     initialJobs,
-		ioToSChan:         ioToSChan,
-		pToIOChan:         pToIOChan,
-		sToIOSignal:       sToIOSignal,
-		ioCompletedSignal: ioCompletedSignal,
-		logger:            logger,
-		clockSignal:       clockSignal,
-		systemTime:        clock,
+		scheduledJobs: initialJobs,
+		ioToSChan:     ioToSChan,
+		pToIOChan:     pToIOChan,
+		logger:        logger,
+		clockSignal:   clockSignal,
+		systemTime:    clock,
 	}
 }
 
@@ -49,7 +45,6 @@ func (s *IOStream) ScheduleInput(ctx context.Context) {
 	}
 
 	s.logger.IOLog("All jobs scheduled")
-	s.ioCompletedSignal <- struct{}{}
 }
 
 func (s *IOStream) DoIO(ctx context.Context) {

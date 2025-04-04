@@ -66,7 +66,7 @@ func TestMLFQBasicCaseNoIO(t *testing.T) {
 	}
 
 	// TODO: manually configured system run time and clock delay
-	out := RunSystem(&MLFQConfig, inputs, time.Duration(4*time.Second), true)
+	out := RunSystem(&MLFQConfig, inputs, time.Duration(2*time.Second), true)
 
 	expectedSystemBehaviour := []AuditLog{
 		{Action: EXEC, JobID: "1"},
@@ -113,7 +113,7 @@ func TestMLFQOnlyIO(t *testing.T) {
 		QueueSize:     100,
 	}
 
-	out := RunSystem(&MLFQConfig, inputs, time.Duration(6*time.Second), true)
+	out := RunSystem(&MLFQConfig, inputs, time.Duration(2*time.Second), true)
 
 	expectedSystemBehaviour := []AuditLog{
 		{Action: SWAP, JobID: "1"},

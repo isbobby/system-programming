@@ -21,14 +21,13 @@ type MLFQConfig struct {
 	IOToSChan   <-chan *Job
 	PToSChan    <-chan *Job
 	PToSSignal  <-chan interface{}
-	SToIOSignal chan<- interface{}
 	IOToSSignal <-chan interface{}
 
 	Logger *AuditLogger
 }
 
 func (cfg MLFQConfig) Validate() error {
-	if cfg.SToPChan == nil || cfg.IOToSChan == nil || cfg.PToSChan == nil || cfg.PToSSignal == nil || cfg.SToIOSignal == nil {
+	if cfg.SToPChan == nil || cfg.IOToSChan == nil || cfg.PToSChan == nil || cfg.PToSSignal == nil {
 		return errors.New("err attempt to initialise MLFQ with some nil channel")
 	}
 
@@ -60,7 +59,6 @@ type MLFQ struct {
 	pToSChan    <-chan *Job
 	pToSSignal  <-chan interface{}
 	ioToSChan   <-chan *Job
-	sToIOSignal chan<- interface{}
 	ioToSSignal <-chan interface{}
 
 	logger *AuditLogger
@@ -75,7 +73,6 @@ func NewMLFQ(cfg MLFQConfig) MLFQ {
 		ResetInterval: cfg.ResetInterval,
 
 		pToSSignal:  cfg.PToSSignal,
-		sToIOSignal: cfg.SToIOSignal,
 		ioToSSignal: cfg.IOToSSignal,
 
 		sToPChan:  cfg.SToPChan,
