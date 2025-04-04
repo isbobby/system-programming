@@ -17,16 +17,18 @@ type MLFQConfig struct {
 	ResetInterval int
 	QueueSize     int
 
-	SToPChan   chan<- *Job
-	IOToSChan  <-chan *Job
-	PToSChan   <-chan *Job
-	PToSSignal <-chan interface{}
+	SToPChan    chan<- *Job
+	IOToSChan   <-chan *Job
+	PToSChan    <-chan *Job
+	PToSSignal  <-chan interface{}
+	SToIOSignal chan<- interface{}
+	IOToSSignal <-chan interface{}
 
 	Logger *AuditLogger
 }
 
 func (cfg MLFQConfig) Validate() error {
-	if cfg.SToPChan == nil || cfg.IOToSChan == nil || cfg.PToSChan == nil || cfg.PToSSignal == nil {
+	if cfg.SToPChan == nil || cfg.IOToSChan == nil || cfg.PToSChan == nil || cfg.PToSSignal == nil || cfg.SToIOSignal == nil {
 		return errors.New("err attempt to initialise MLFQ with some nil channel")
 	}
 
@@ -54,10 +56,12 @@ type MLFQ struct {
 	QueuesByPriority   map[int]chan *Job
 	QueueTimeAllotment map[int]int
 
-	sToPChan   chan<- *Job
-	pToSChan   <-chan *Job
-	pToSSignal <-chan interface{}
-	ioToSChan  <-chan *Job
+	sToPChan    chan<- *Job
+	pToSChan    <-chan *Job
+	pToSSignal  <-chan interface{}
+	ioToSChan   <-chan *Job
+	sToIOSignal chan<- interface{}
+	ioToSSignal <-chan interface{}
 
 	logger *AuditLogger
 }
@@ -69,7 +73,10 @@ func NewMLFQ(cfg MLFQConfig) MLFQ {
 
 	mlfq := MLFQ{
 		ResetInterval: cfg.ResetInterval,
-		pToSSignal:    cfg.PToSSignal,
+
+		pToSSignal:  cfg.PToSSignal,
+		sToIOSignal: cfg.SToIOSignal,
+		ioToSSignal: cfg.IOToSSignal,
 
 		sToPChan:  cfg.SToPChan,
 		ioToSChan: cfg.IOToSChan,
@@ -172,17 +179,18 @@ func (q *MLFQ) pollForReadyTasks(ctx context.Context) bool {
 }
 
 func (q *MLFQ) HandleProcSignal(ctx context.Context) {
-	// only run when processor is idle
 	for {
 		<-q.pToSSignal
-		// go q.Reset()
-		q.logger.MLFQLog("received scheduling signal from CPU")
-
-		for !q.pollForReadyTasks(ctx) {
-			q.AcceptJobFromIO(ctx)
-			q.AcceptExpiredJobFromProc(ctx)
+		q.logger.MLFQLog("processor idle, control handed to scheduler")
+		for {
+			// if no ready tasks, attempt to receive from IO/CPU
+			if ready := q.pollForReadyTasks(ctx); !ready {
+				q.AcceptJobFromIO(ctx)
+				q.AcceptExpiredJobFromProc(ctx)
+			} else {
+				break
+			}
 		}
-
 		q.scheduleJob(ctx)
 	}
 }

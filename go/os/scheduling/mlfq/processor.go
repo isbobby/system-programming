@@ -5,24 +5,25 @@ import (
 )
 
 type Processor struct {
-	runningJob  *Job
-	SystemClock *Clock
+	runningJob *Job
+
 	MLFQ        *MLFQ
 	sToPChan    <-chan *Job
 	pToIOChan   chan<- *Job
 	pToSChan    chan<- *Job
 	pToSSignal  chan<- interface{}
+	clockSignal <-chan interface{}
 	logger      *AuditLogger
 }
 
-func NewProcessor(c *Clock, sToPChan <-chan *Job, pToSSignal chan<- interface{}, pToSChan chan<- *Job, pToIOChan chan<- *Job, logger *AuditLogger) Processor {
+func NewProcessor(clockSignal <-chan interface{}, sToPChan <-chan *Job, pToSSignal chan<- interface{}, pToSChan chan<- *Job, pToIOChan chan<- *Job, logger *AuditLogger) Processor {
 	return Processor{
 		runningJob:  nil,
-		SystemClock: c,
 		sToPChan:    sToPChan,
 		pToSSignal:  pToSSignal,
 		pToIOChan:   pToIOChan,
 		pToSChan:    pToSChan,
+		clockSignal: clockSignal,
 		logger:      logger,
 	}
 }
@@ -74,10 +75,16 @@ func (p *Processor) runCurrentJob() {
 
 		instruction := p.runningJob.InstructionStack[len(p.runningJob.InstructionStack)-1]
 		if instruction.IsCPU() {
+
+			cyclesRemaining := instruction.Cycle
+			for cyclesRemaining > 0 {
+				<-p.clockSignal
+				cyclesRemaining -= 1
+			}
+
 			p.runningJob.InstructionStack = p.runningJob.InstructionStack[:len(p.runningJob.InstructionStack)-1]
 			p.logger.CPUAuditLog(EXEC, JobIDKey, p.runningJob.ID, "Instruction Left", len(p.runningJob.InstructionStack), "Time Left", p.runningJob.TimeAllotment.Load())
 			p.runningJob.TimeAllotment.Add(-1)
-			p.SystemClock.AdvanceTime()
 		} else {
 			p.pToIOChan <- p.runningJob
 			p.logger.CPUAuditLog(SWAP, JobIDKey, p.runningJob.ID)

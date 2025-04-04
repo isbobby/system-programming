@@ -7,6 +7,9 @@
     1.2 - test case: one task with IO instruction only
 3 - do a comprehensive test case and validate solution
 4 - write up and post on Github
+5 - processor schedule task to IO device directly, is this what we want? or we want to pass it via MLFQ?
 
 ## Code Design
 ![](MLFQ_golang_design.png)
+
+

@@ -6,39 +6,50 @@ import (
 )
 
 type IOStream struct {
-	ScheduledJobs []*Job
-	ioToSChan     chan<- *Job
-	pToIOChan     <-chan *Job
-	SystemTime    *Clock
+	scheduledJobs     []*Job
+	ioCompletedSignal chan<- interface{}
+
+	ioToSChan   chan<- *Job
+	pToIOChan   <-chan *Job
+	sToIOSignal <-chan interface{}
+	clockSignal <-chan interface{}
+
+	systemTime *Clock
 
 	logger *AuditLogger
 }
 
-func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, logger *AuditLogger, systemTime *Clock) *IOStream {
+func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, sToIOSignal <-chan interface{}, ioCompletedSignal chan<- interface{}, logger *AuditLogger, clockSignal <-chan interface{}, clock *Clock) *IOStream {
 	return &IOStream{
-		ScheduledJobs: initialJobs,
-		ioToSChan:     ioToSChan,
-		pToIOChan:     pToIOChan,
-		logger:        logger,
-		SystemTime:    systemTime,
+		scheduledJobs:     initialJobs,
+		ioToSChan:         ioToSChan,
+		pToIOChan:         pToIOChan,
+		sToIOSignal:       sToIOSignal,
+		ioCompletedSignal: ioCompletedSignal,
+		logger:            logger,
+		clockSignal:       clockSignal,
+		systemTime:        clock,
 	}
 }
 
 func (s *IOStream) ScheduleInput(ctx context.Context) {
-	sort.Slice(s.ScheduledJobs, func(i, j int) bool {
-		return s.ScheduledJobs[i].ScheduledTime < s.ScheduledJobs[j].ScheduledTime
+	sort.Slice(s.scheduledJobs, func(i, j int) bool {
+		return s.scheduledJobs[i].ScheduledTime < s.scheduledJobs[j].ScheduledTime
 	})
 
-	for len(s.ScheduledJobs) > 0 {
-		job := s.ScheduledJobs[0]
-		s.ScheduledJobs = s.ScheduledJobs[1:]
-		for job.ScheduledTime > int(s.SystemTime.Time.Load()) {
-			// time.Sleep(time.Duration(500 * float64(time.Millisecond)))
+	for len(s.scheduledJobs) > 0 {
+		job := s.scheduledJobs[0]
+		s.scheduledJobs = s.scheduledJobs[1:]
+
+		for job.ScheduledTime > int(s.systemTime.Time.Load()) {
 		}
 
 		s.logger.IOLog("input new job", "ID", job.ID)
 		s.ioToSChan <- job
 	}
+
+	s.logger.IOLog("All jobs scheduled")
+	s.ioCompletedSignal <- struct{}{}
 }
 
 func (s *IOStream) DoIO(ctx context.Context) {
@@ -54,16 +65,18 @@ func (s *IOStream) DoIO(ctx context.Context) {
 			instruction := job.InstructionStack[len(job.InstructionStack)-1]
 
 			if instruction.IsCPU() {
+				s.logger.IOLog("job has CPU instruction, send back to scheduler", "ID", job.ID)
 				s.ioToSChan <- job
 			} else if instruction.IsIO() {
-				currentSystemTime := s.SystemTime.Time.Load()
+				s.logger.IOLog("job has IO instruction, executing", "ID", job.ID)
 
-				completeTime := int(currentSystemTime) + instruction.Cycle
+				cyclesRemaining := instruction.Cycle
 
-				s.logger.IOLog("run IO instruction", "ID", job.ID, "Completion Time", completeTime)
-
-				for completeTime < int(s.SystemTime.Time.Load()) {
-					// DO IO
+				for cyclesRemaining > 0 {
+					// note what if there's existing cycle signal
+					s.logger.IOLog("run job IO", "ID", job.ID, "cycle left", cyclesRemaining)
+					<-s.clockSignal
+					cyclesRemaining -= 1
 				}
 
 				job.InstructionStack = job.InstructionStack[:len(job.InstructionStack)-1]
