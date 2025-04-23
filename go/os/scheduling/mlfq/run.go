@@ -17,10 +17,10 @@ func RunSystem(MLFQCfg *MLFQConfig, inputs []*Job, timeout time.Duration, verbos
 
 	pToSSignal := make(chan interface{})
 
-	ioToSChan := make(chan *Job, 10) // for IO to enqueue job for scheduling, hence io To S, assuming 10 job buffer
+	ioToSChan := make(chan *Job)     // for IO to enqueue job for scheduling, hence io To S, assuming 10 job buffer
+	pToIOChan := make(chan *Job, 10) // for processor to swap job for IO, hence p to IO. We have 1 IO device, need a buffer for queue
 	pToSChan := make(chan *Job, 1)   // for processor to expire a job back to scheduler, hence p to S
 	sToPChan := make(chan *Job)      // for scheduler to schedule job onto processor, hence S to P
-	pToIOChan := make(chan *Job, 10) // for processor to swap job for IO, hence p to IO. We have 1 IO device, need a buffer for queue
 
 	logger := AuditLogger{SystemTime: clock, Verbose: verbose}
 

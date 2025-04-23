@@ -51,43 +51,49 @@ func (s *IOStream) DoIO(ctx context.Context) {
 	for {
 		select {
 		case job := <-s.pToIOChan:
-			s.logger.IOLog("received job from processor", "ID", job.ID)
-			if len(job.InstructionStack) == 0 {
-				// TODO log error
-				continue
-			}
-
-			instruction := job.InstructionStack[len(job.InstructionStack)-1]
-
-			if instruction.IsCPU() {
-				s.logger.IOLog("job has CPU instruction, send back to scheduler", "ID", job.ID)
-				s.ioToSChan <- job
-			} else if instruction.IsIO() {
-				s.logger.IOLog("job has IO instruction, executing", "ID", job.ID)
-
-				cyclesRemaining := instruction.Cycle
-
-				for cyclesRemaining > 0 {
-					// note what if there's existing cycle signal
-					s.logger.IOLog("run job IO", "ID", job.ID, "cycle left", cyclesRemaining)
-					<-s.clockSignal
-					cyclesRemaining -= 1
-				}
-
-				job.InstructionStack = job.InstructionStack[:len(job.InstructionStack)-1]
-
-				if len(job.InstructionStack) > 0 {
-					s.ioToSChan <- job
-					s.logger.IOLog("job IO completed and sent to scheduler", "ID", job.ID)
-				} else {
-					s.logger.IOLog("job IO completed", "ID", job.ID)
-				}
-			}
-
+			s.doIO(job)
 		case <-ctx.Done():
 			return
 		default:
 			continue
+		}
+	}
+}
+
+func (s *IOStream) doIO(job *Job) {
+	s.logger.IOLog("received job from processor", "ID", job.ID)
+	if len(job.InstructionStack) == 0 {
+		s.logger.IOLog("received job from processor", "ID", job.ID)
+		return
+	}
+
+	instruction := job.InstructionStack[len(job.InstructionStack)-1]
+
+	if instruction.IsCPU() {
+		s.logger.IOLog("job has CPU instruction, send back to scheduler", "ID", job.ID)
+		s.ioToSChan <- job
+		return
+	}
+
+	if instruction.IsIO() {
+		s.logger.IOLog("job has IO instruction, executing", "ID", job.ID)
+
+		cyclesRemaining := instruction.Cycle
+
+		for cyclesRemaining > 0 {
+			// note what if there's existing cycle signal
+			s.logger.IOLog("run job IO", "ID", job.ID, "cycle left", cyclesRemaining)
+			<-s.clockSignal
+			cyclesRemaining -= 1
+		}
+
+		job.InstructionStack = job.InstructionStack[:len(job.InstructionStack)-1]
+
+		if len(job.InstructionStack) > 0 {
+			s.ioToSChan <- job
+			s.logger.IOLog("job IO completed and sent to scheduler", "ID", job.ID)
+		} else {
+			s.logger.IOLog("job IO completed", "ID", job.ID)
 		}
 	}
 }

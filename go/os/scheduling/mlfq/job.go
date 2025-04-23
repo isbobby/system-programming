@@ -15,14 +15,6 @@ type JobInput struct {
 	Type  string
 }
 
-func (i JobInput) IsIO() bool {
-	return i.Type == "IO"
-}
-
-func (i JobInput) IsCPU() bool {
-	return i.Type == "CPU"
-}
-
 var (
 	IOInstruction JobInput = JobInput{
 		Cycle: 5,
@@ -33,6 +25,14 @@ var (
 		Type:  "CPU",
 	}
 )
+
+func (i JobInput) IsIO() bool {
+	return i.Type == "IO"
+}
+
+func (i JobInput) IsCPU() bool {
+	return i.Type == "CPU"
+}
 
 func NewJob(ID int, ScheduledTime int, InstructionStack []JobInput) *Job {
 	return &Job{

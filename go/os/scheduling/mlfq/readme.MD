@@ -8,6 +8,8 @@
 3 - do a comprehensive test case and validate solution
 4 - write up and post on Github
 5 - processor schedule task to IO device directly, is this what we want? or we want to pass it via MLFQ?
+6 - handle processor termination
+7 - clean up logs
 
 ## Code Design
 ![](MLFQ_golang_design.png)

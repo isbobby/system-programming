@@ -39,11 +39,11 @@ func (c *Clock) advanceTime() {
 
 func (c *Clock) publishSignal() {
 	for _, subscriber := range c.Subscriptions {
-		c.bestEffortPush(subscriber)
+		c.nonBlockingPush(subscriber)
 	}
 }
 
-func (c *Clock) bestEffortPush(subscription chan<- interface{}) {
+func (c *Clock) nonBlockingPush(subscription chan<- interface{}) {
 	select {
 	case subscription <- struct{}{}:
 	default:
