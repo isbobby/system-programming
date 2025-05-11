@@ -11,8 +11,9 @@
     3.3 - when scheduler has control, sees no pending task from processor, and IO is not busy, and IO has no more tasks to be scheduled it will exit
 
 ## To fix
-1 - handle processor termination
-2 - clean up logs
+1 - clean up audit logs
+2 - use JSON for system configs
+3 - safe priority reshuffle - go routine is used to read from queue, but reshuffule requires writing, how to do it safely
 
 ## Code Design
 ![](MLFQ_golang_design.png)
