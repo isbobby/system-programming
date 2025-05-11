@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"sort"
+	"sync/atomic"
 )
 
-type IOStream struct {
+type IODevice struct {
 	scheduledJobs []*Job
 
 	clockSignal <-chan interface{}
@@ -15,10 +16,13 @@ type IOStream struct {
 	systemTime *Clock
 
 	logger *AuditLogger
+
+	ioDeviceBusy                atomic.Bool
+	ioDeviceMoreTasksInSchedule atomic.Bool
 }
 
-func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, logger *AuditLogger, clockSignal <-chan interface{}, clock *Clock) *IOStream {
-	return &IOStream{
+func NewIODevice(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Job, logger *AuditLogger, clockSignal <-chan interface{}, clock *Clock) *IODevice {
+	return &IODevice{
 		scheduledJobs: initialJobs,
 		ioToSChan:     ioToSChan,
 		pToIOChan:     pToIOChan,
@@ -28,7 +32,9 @@ func NewIOStream(initialJobs []*Job, ioToSChan chan<- *Job, pToIOChan <-chan *Jo
 	}
 }
 
-func (s *IOStream) ScheduleInput(ctx context.Context) {
+func (s *IODevice) ScheduleInput(ctx context.Context) {
+	s.ioDeviceMoreTasksInSchedule.Store(true)
+
 	sort.Slice(s.scheduledJobs, func(i, j int) bool {
 		return s.scheduledJobs[i].ScheduledTime < s.scheduledJobs[j].ScheduledTime
 	})
@@ -44,10 +50,11 @@ func (s *IOStream) ScheduleInput(ctx context.Context) {
 		s.ioToSChan <- job
 	}
 
+	s.ioDeviceMoreTasksInSchedule.Store(false)
 	s.logger.IOLog("All jobs scheduled")
 }
 
-func (s *IOStream) DoIO(ctx context.Context) {
+func (s *IODevice) PollIOQueue(ctx context.Context) {
 	for {
 		select {
 		case job := <-s.pToIOChan:
@@ -60,7 +67,7 @@ func (s *IOStream) DoIO(ctx context.Context) {
 	}
 }
 
-func (s *IOStream) doIO(job *Job) {
+func (s *IODevice) doIO(job *Job) {
 	s.logger.IOLog("received job from processor", "ID", job.ID)
 	if len(job.InstructionStack) == 0 {
 		s.logger.IOLog("received job from processor", "ID", job.ID)
@@ -80,6 +87,8 @@ func (s *IOStream) doIO(job *Job) {
 
 		cyclesRemaining := instruction.Cycle
 
+		s.ioDeviceBusy.Store(true)
+
 		for cyclesRemaining > 0 {
 			// note what if there's existing cycle signal
 			s.logger.IOLog("run job IO", "ID", job.ID, "cycle left", cyclesRemaining)
@@ -95,10 +104,25 @@ func (s *IOStream) doIO(job *Job) {
 		} else {
 			s.logger.IOLog("job IO completed", "ID", job.ID)
 		}
+
+		s.ioDeviceBusy.Store(false)
 	}
 }
 
-func (s *IOStream) Run(ctx context.Context, cancel context.CancelFunc) {
-	go s.DoIO(ctx)
+func (s *IODevice) Run(ctx context.Context, cancel context.CancelFunc) {
+	go s.PollIOQueue(ctx)
 	go s.ScheduleInput(ctx)
+}
+
+func (s *IODevice) DeviceBusy() bool {
+	return s.ioDeviceBusy.Load()
+}
+
+func (s *IODevice) DeviceHasTasks() bool {
+	return s.ioDeviceMoreTasksInSchedule.Load()
+}
+
+type IODeviceAPI interface {
+	DeviceBusy() bool
+	DeviceHasTasks() bool
 }

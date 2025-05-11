@@ -11,8 +11,9 @@ func RunSystem(MLFQCfg *MLFQConfig, inputs []*Job, timeout time.Duration, verbos
 	defer cancel()
 
 	clockToIOSignal := make(chan interface{})
+	clockToSSignal := make(chan interface{})
 	clockToPSignal := make(chan interface{})
-	clockSubscriptions := []chan<- interface{}{clockToIOSignal, clockToPSignal}
+	clockSubscriptions := []chan<- interface{}{clockToIOSignal, clockToPSignal, clockToSSignal}
 	clock := NewClock(time.Duration(100*time.Millisecond), clockSubscriptions)
 
 	pToSSignal := make(chan interface{})
@@ -24,7 +25,7 @@ func RunSystem(MLFQCfg *MLFQConfig, inputs []*Job, timeout time.Duration, verbos
 
 	logger := AuditLogger{SystemTime: clock, Verbose: verbose}
 
-	io := NewIOStream(inputs, ioToSChan, pToIOChan, &logger, clockToIOSignal, clock)
+	io := NewIODevice(inputs, ioToSChan, pToIOChan, &logger, clockToIOSignal, clock)
 	go io.Run(timeoutCtx, cancel)
 
 	MLFQCfg.Logger = &logger
@@ -32,8 +33,9 @@ func RunSystem(MLFQCfg *MLFQConfig, inputs []*Job, timeout time.Duration, verbos
 	MLFQCfg.PToSChan = pToSChan
 	MLFQCfg.IOToSChan = ioToSChan
 	MLFQCfg.PToSSignal = pToSSignal
+	MLFQCfg.ClockSignal = clockToSSignal
 
-	mlfq := NewMLFQ(*MLFQCfg)
+	mlfq := NewMLFQ(*MLFQCfg, io)
 	go mlfq.Run(timeoutCtx)
 
 	processor := NewProcessor(clockToPSignal, sToPChan, pToSSignal, pToSChan, pToIOChan, &logger)

@@ -38,10 +38,8 @@ func (p *Processor) Run(ctx context.Context) {
 		}
 
 		if p.runningJob != nil {
-			// if non-OS job is scheduled, run it
 			p.runCurrentJob()
 		} else {
-			// otherwise, signal scheduler to run on processor
 			p.logger.CPUWarnLog("CPU idle, sent signal for MLFQ")
 			p.pToSSignal <- struct{}{}
 

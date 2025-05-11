@@ -1,15 +1,18 @@
 # Multi-level Feedback Queue
 
-## To fix
+## Features
 1 - refactored design, where if CPU is blocked on empty task, it will hand over control to MLFQ to schedule the next, simulating handing back control to scheduler
 2 - code time out and deadlocks when only job is at IO, IO device does not advance system time
     1.1 - for example, no task on CPU, but a task is in IO being executed, because IO is not advancing time, the task is deadlocked
     1.2 - test case: one task with IO instruction only
-3 - do a comprehensive test case and validate solution
-4 - write up and post on Github
-5 - processor schedule task to IO device directly, is this what we want? or we want to pass it via MLFQ?
-6 - handle processor termination
-7 - clean up logs
+3 - processor termination implementation
+    3.1 - when processor has no more task, it hands control over the scheduler
+    3.2 - when IO has no more task, it will set its `atomic.bool Busy` to false
+    3.3 - when scheduler has control, sees no pending task from processor, and IO is not busy, and IO has no more tasks to be scheduled it will exit
+
+## To fix
+1 - handle processor termination
+2 - clean up logs
 
 ## Code Design
 ![](MLFQ_golang_design.png)

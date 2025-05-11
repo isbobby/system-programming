@@ -22,6 +22,7 @@ type MLFQConfig struct {
 	PToSChan    <-chan *Job
 	PToSSignal  <-chan interface{}
 	IOToSSignal <-chan interface{}
+	ClockSignal <-chan interface{}
 
 	Logger *AuditLogger
 }
@@ -60,11 +61,13 @@ type MLFQ struct {
 	pToSSignal  <-chan interface{}
 	ioToSChan   <-chan *Job
 	ioToSSignal <-chan interface{}
+	clockSignal <-chan interface{}
 
 	logger *AuditLogger
+	ioAPI  IODeviceAPI
 }
 
-func NewMLFQ(cfg MLFQConfig) MLFQ {
+func NewMLFQ(cfg MLFQConfig, IODeviceAPI IODeviceAPI) MLFQ {
 	if err := cfg.Validate(); err != nil {
 		panic(fmt.Errorf("failed to initialise MLFQ due to config error: %v", err))
 	}
@@ -75,10 +78,13 @@ func NewMLFQ(cfg MLFQConfig) MLFQ {
 		pToSSignal:  cfg.PToSSignal,
 		ioToSSignal: cfg.IOToSSignal,
 
-		sToPChan:  cfg.SToPChan,
-		ioToSChan: cfg.IOToSChan,
-		pToSChan:  cfg.PToSChan,
-		logger:    cfg.Logger,
+		sToPChan:    cfg.SToPChan,
+		ioToSChan:   cfg.IOToSChan,
+		pToSChan:    cfg.PToSChan,
+		logger:      cfg.Logger,
+		clockSignal: cfg.ClockSignal,
+
+		ioAPI: IODeviceAPI,
 	}
 
 	timeAllotment := map[int]int{}
@@ -115,29 +121,42 @@ func (q *MLFQ) Reset() {
 	}
 }
 
-func (q *MLFQ) AcceptJobFromIO(ctx context.Context) {
+func (q *MLFQ) AcceptJobFromIO(ctx context.Context) bool {
+	hasNewReadyTask := false
+
 	select {
+	case <-ctx.Done():
 	case job := <-q.ioToSChan:
 		q.logger.MLFQLog("MLFQ received job from IO", "ID", job.ID)
 		q.push(job)
-	case <-ctx.Done():
-		return
+		hasNewReadyTask = true
 	default:
-		return
+		if q.ioAPI.DeviceBusy() {
+			hasNewReadyTask = true
+		}
+
+		if q.ioAPI.DeviceHasTasks() {
+			hasNewReadyTask = true
+		}
 	}
+
+	return hasNewReadyTask
 }
 
-func (q *MLFQ) AcceptExpiredJobFromProc(ctx context.Context) {
+func (q *MLFQ) AcceptExpiredJobFromProc(ctx context.Context) bool {
+	hasNewReadyTask := false
+
 	select {
+	case <-ctx.Done():
 	case job := <-q.pToSChan:
 		job.DecreasePriority()
 		q.logger.MLFQLog("MLFQ received expired job from CPU", "ID", job.ID, "New Priority", *job.Priority)
 		q.push(job)
-	case <-ctx.Done():
-		return
+		hasNewReadyTask = true
 	default:
-		return
 	}
+
+	return hasNewReadyTask
 }
 
 func (q *MLFQ) push(j *Job) {
@@ -159,7 +178,7 @@ func (q *MLFQ) push(j *Job) {
 	q.QueuesByPriority[*j.Priority] <- j
 }
 
-func (q *MLFQ) pollForReadyTasks(ctx context.Context) bool {
+func (q *MLFQ) readAllQueuesForReadyTasks(ctx context.Context) bool {
 	for {
 		select {
 		case <-ctx.Done():
@@ -176,14 +195,29 @@ func (q *MLFQ) pollForReadyTasks(ctx context.Context) bool {
 }
 
 func (q *MLFQ) HandleProcSignal(ctx context.Context) {
+	idleTime := 0
+
 	for {
 		<-q.pToSSignal
 		q.logger.MLFQLog("processor idle, control handed to scheduler")
 		for {
 			// if no ready tasks, attempt to receive from IO/CPU
-			if ready := q.pollForReadyTasks(ctx); !ready {
-				q.AcceptJobFromIO(ctx)
-				q.AcceptExpiredJobFromProc(ctx)
+			var hasMoreTasks bool
+			if hasMoreTasks = q.readAllQueuesForReadyTasks(ctx); !hasMoreTasks {
+				ioHasMoreTask := q.AcceptJobFromIO(ctx)
+				procHasMoreTask := q.AcceptExpiredJobFromProc(ctx)
+
+				if !ioHasMoreTask && !procHasMoreTask {
+					<-q.clockSignal
+					idleTime += 1
+					if idleTime >= 2 {
+						q.logger.MLFQLog("scheduler idled for 2 cycles, assume no more tasks, existing scheduler")
+						return
+					}
+				} else {
+					idleTime = 0
+				}
+
 			} else {
 				break
 			}
