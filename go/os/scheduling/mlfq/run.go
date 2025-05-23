@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -13,7 +14,8 @@ func RunSystem(MLFQCfg *MLFQConfig, inputs []*Job, timeout time.Duration, verbos
 	clockToIOSignal := make(chan interface{})
 	clockToSSignal := make(chan interface{})
 	clockToPSignal := make(chan interface{})
-	clockSubscriptions := []chan<- interface{}{clockToIOSignal, clockToPSignal, clockToSSignal}
+	clockToResetSSignal := make(chan interface{})
+	clockSubscriptions := []chan<- interface{}{clockToIOSignal, clockToPSignal, clockToSSignal, clockToResetSSignal}
 	clock := NewClock(time.Duration(100*time.Millisecond), clockSubscriptions)
 
 	pToSSignal := make(chan interface{})
@@ -34,14 +36,22 @@ func RunSystem(MLFQCfg *MLFQConfig, inputs []*Job, timeout time.Duration, verbos
 	MLFQCfg.IOToSChan = ioToSChan
 	MLFQCfg.PToSSignal = pToSSignal
 	MLFQCfg.ClockSignal = clockToSSignal
+	MLFQCfg.ResetClockSignal = clockToResetSSignal
 
 	mlfq := NewMLFQ(*MLFQCfg, io)
-	go mlfq.Run(timeoutCtx)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		mlfq.Run(timeoutCtx)
+		wg.Done()
+	}()
 
 	processor := NewProcessor(clockToPSignal, sToPChan, pToSSignal, pToSChan, pToIOChan, &logger)
 	go processor.Run(timeoutCtx)
 
-	clock.Run(timeoutCtx)
+	go clock.Run(timeoutCtx)
+
+	wg.Wait()
 
 	return logger.SystemOutput
 }

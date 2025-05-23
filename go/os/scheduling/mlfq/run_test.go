@@ -229,6 +229,23 @@ func TestMLFQMultipleIOJobs(t *testing.T) {
 	}
 }
 
-func TestMLFQReshuffuleJobs(t *testing.T) {
+func TestMLFQReshuffulesJobs(t *testing.T) {
+	inputs := []*Job{
+		NewJob(1, 0, []JobInput{CPUInstruction, CPUInstruction, CPUInstruction, CPUInstruction, CPUInstruction, CPUInstruction}),
+		NewJob(2, 0, []JobInput{CPUInstruction, CPUInstruction}),
+		NewJob(3, 0, []JobInput{CPUInstruction, CPUInstruction}),
+		NewJob(4, 0, []JobInput{CPUInstruction, CPUInstruction}),
+	}
 
+	MLFQConfig := MLFQConfig{
+		QueueConfigs: []QueueConfig{
+			{Priority: 2, TimeAllotment: 1},
+			{Priority: 1, TimeAllotment: 2},
+			{Priority: 0, TimeAllotment: 3},
+		},
+		ResetInterval: 2,
+		QueueSize:     100,
+	}
+
+	RunSystem(&MLFQConfig, inputs, time.Duration(5*time.Second), true)
 }

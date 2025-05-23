@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync/atomic"
 )
 
 type QueueConfig struct {
@@ -17,12 +18,13 @@ type MLFQConfig struct {
 	ResetInterval int
 	QueueSize     int
 
-	SToPChan    chan<- *Job
-	IOToSChan   <-chan *Job
-	PToSChan    <-chan *Job
-	PToSSignal  <-chan interface{}
-	IOToSSignal <-chan interface{}
-	ClockSignal <-chan interface{}
+	SToPChan         chan<- *Job
+	IOToSChan        <-chan *Job
+	PToSChan         <-chan *Job
+	PToSSignal       <-chan interface{}
+	IOToSSignal      <-chan interface{}
+	ClockSignal      <-chan interface{}
+	ResetClockSignal <-chan interface{}
 
 	Logger *AuditLogger
 }
@@ -56,12 +58,14 @@ type MLFQ struct {
 	QueuesByPriority   map[int]chan *Job
 	QueueTimeAllotment map[int]int
 
-	sToPChan    chan<- *Job
-	pToSChan    <-chan *Job
-	pToSSignal  <-chan interface{}
-	ioToSChan   <-chan *Job
-	ioToSSignal <-chan interface{}
-	clockSignal <-chan interface{}
+	resetTimer       atomic.Int32
+	sToPChan         chan<- *Job
+	pToSChan         <-chan *Job
+	pToSSignal       <-chan interface{}
+	ioToSChan        <-chan *Job
+	ioToSSignal      <-chan interface{}
+	clockSignal      <-chan interface{}
+	resetClockSignal <-chan interface{}
 
 	logger *AuditLogger
 	ioAPI  IODeviceAPI
@@ -78,11 +82,12 @@ func NewMLFQ(cfg MLFQConfig, IODeviceAPI IODeviceAPI) MLFQ {
 		pToSSignal:  cfg.PToSSignal,
 		ioToSSignal: cfg.IOToSSignal,
 
-		sToPChan:    cfg.SToPChan,
-		ioToSChan:   cfg.IOToSChan,
-		pToSChan:    cfg.PToSChan,
-		logger:      cfg.Logger,
-		clockSignal: cfg.ClockSignal,
+		sToPChan:         cfg.SToPChan,
+		ioToSChan:        cfg.IOToSChan,
+		pToSChan:         cfg.PToSChan,
+		logger:           cfg.Logger,
+		clockSignal:      cfg.ClockSignal,
+		resetClockSignal: cfg.ResetClockSignal,
 
 		ioAPI: IODeviceAPI,
 	}
@@ -100,25 +105,6 @@ func NewMLFQ(cfg MLFQConfig, IODeviceAPI IODeviceAPI) MLFQ {
 	mlfq.QueuesByPriority = QueuesByPriority
 
 	return mlfq
-}
-
-func (q *MLFQ) Reset() {
-	jobs := []*Job{}
-
-	// remove all jobs from non-max priority queues, making use of reset interval
-	for prio, queue := range q.QueuesByPriority {
-		if prio == q.MaxPriority {
-			continue
-		}
-
-		for len(queue) > 0 {
-			jobs = append(jobs, <-queue)
-		}
-	}
-
-	for _, job := range jobs {
-		q.QueuesByPriority[q.MaxPriority] <- job
-	}
 }
 
 func (q *MLFQ) AcceptJobFromIO(ctx context.Context) bool {
@@ -196,12 +182,15 @@ func (q *MLFQ) readAllQueuesForReadyTasks(ctx context.Context) bool {
 
 func (q *MLFQ) HandleProcSignal(ctx context.Context) {
 	idleTime := 0
-
 	for {
 		<-q.pToSSignal
 		q.logger.MLFQLog("processor idle, control handed to scheduler")
 		for {
-			// if no ready tasks, attempt to receive from IO/CPU
+
+			// 1 - once scheduler
+			q.AcceptJobFromIO(ctx)
+			q.AcceptExpiredJobFromProc(ctx)
+
 			var hasMoreTasks bool
 			if hasMoreTasks = q.readAllQueuesForReadyTasks(ctx); !hasMoreTasks {
 				ioHasMoreTask := q.AcceptJobFromIO(ctx)
@@ -211,7 +200,7 @@ func (q *MLFQ) HandleProcSignal(ctx context.Context) {
 					<-q.clockSignal
 					idleTime += 1
 					if idleTime >= 2 {
-						q.logger.MLFQLog("scheduler idled for 2 cycles, assume no more tasks, existing scheduler")
+						q.logger.MLFQLog("scheduler idled for 2 cycles, assume no more tasks, exiting scheduler")
 						return
 					}
 				} else {
@@ -222,7 +211,33 @@ func (q *MLFQ) HandleProcSignal(ctx context.Context) {
 				break
 			}
 		}
+		q.resetPriorities(ctx)
 		q.scheduleJob(ctx)
+	}
+}
+
+func (q *MLFQ) resetPriorities(ctx context.Context) {
+	if q.resetTimer.Load() < int32(q.ResetInterval) {
+		return
+	}
+
+	q.resetTimer.Store(0)
+	jobs := []*Job{}
+
+	for prio, queue := range q.QueuesByPriority {
+		if prio == q.MaxPriority {
+			continue
+		}
+
+		for len(queue) > 0 {
+			jobs = append(jobs, <-queue)
+		}
+	}
+
+	q.logger.MLFQLog("scheduler reset priorities, all tasks have highest priority")
+
+	for _, job := range jobs {
+		q.QueuesByPriority[q.MaxPriority] <- job
 	}
 }
 
@@ -243,6 +258,18 @@ func (q *MLFQ) scheduleJob(ctx context.Context) {
 	}
 }
 
+func (q *MLFQ) accumulateResetTimer(ctx context.Context) {
+	for {
+		select {
+		case <-q.resetClockSignal:
+			q.resetTimer.Add(1)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func (q *MLFQ) Run(ctx context.Context) {
-	go q.HandleProcSignal(ctx)
+	go q.accumulateResetTimer(ctx)
+	q.HandleProcSignal(ctx)
 }

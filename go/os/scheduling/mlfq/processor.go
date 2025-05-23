@@ -40,8 +40,8 @@ func (p *Processor) Run(ctx context.Context) {
 		if p.runningJob != nil {
 			p.runCurrentJob()
 		} else {
-			p.logger.CPUWarnLog("CPU idle, sent signal for MLFQ")
 			p.pToSSignal <- struct{}{}
+			p.logger.CPUWarnLog("CPU idle, sent signal for MLFQ")
 
 			nextJob, open := <-p.sToPChan
 			if !open {
