@@ -208,7 +208,9 @@ func TestMLFQMultipleIOJobs(t *testing.T) {
 	expectedSystemBehaviour := []AuditLog{
 		{Action: SWAP, JobID: "1"},
 		{Action: SWAP, JobID: "2"},
-		{Action: SWAP, JobID: "3"},
+		{Action: EXEC, JobID: "3"},
+		{Action: EXEC, JobID: "3"},
+		{Action: COMPLETE, JobID: "3"},
 	}
 
 	if len(expectedSystemBehaviour) != len(out) {
