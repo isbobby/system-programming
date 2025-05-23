@@ -71,7 +71,7 @@ type MLFQ struct {
 	ioAPI  IODeviceAPI
 }
 
-func NewMLFQ(cfg MLFQConfig, IODeviceAPI IODeviceAPI) MLFQ {
+func NewMLFQ(cfg MLFQConfig, IODeviceAPI IODeviceAPI) *MLFQ {
 	if err := cfg.Validate(); err != nil {
 		panic(fmt.Errorf("failed to initialise MLFQ due to config error: %v", err))
 	}
@@ -104,7 +104,7 @@ func NewMLFQ(cfg MLFQConfig, IODeviceAPI IODeviceAPI) MLFQ {
 	mlfq.QueueTimeAllotment = timeAllotment
 	mlfq.QueuesByPriority = QueuesByPriority
 
-	return mlfq
+	return &mlfq
 }
 
 func (q *MLFQ) AcceptJobFromIO(ctx context.Context) bool {
