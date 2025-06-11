@@ -73,6 +73,8 @@ func (s *naiveLotteryScheduler) RemoveTask(id int) error {
 		return err
 	}
 	s.decreaseMaxTicketCount(task.Ticket())
+
+	s.logger.logTaskAction(task, RemoveTask)
 	return nil
 }
 

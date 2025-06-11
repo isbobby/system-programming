@@ -9,6 +9,8 @@ func (s *sortedTasks) Tasks() []Schedulable {
 func (s *sortedTasks) RemoveTask(id int) (Schedulable, error) {
 	sortedTaskSlice := *s
 	index := -1
+	// need to linear scan now because ordering is based on interval
+	// to improve, need to use an index
 	for i := range *s {
 		if sortedTaskSlice[i].ID() == id {
 			index = i
@@ -43,12 +45,6 @@ func (s *sortedTasks) RemoveTask(id int) (Schedulable, error) {
 		newInterval := [2]int{shiftedIntervalStart, shiftedIntervalStart + taskTicketCount}
 		sortedTaskSlice[i].SetInterval(newInterval)
 		shiftedIntervalStart = newInterval[1] + 1
-
-		// s.logger.logTaskAction(
-		// 	s.sortedTaskList[i], UpdateTask,
-		// 	"old interval", fmt.Sprintf("[%v,%v]", oldTaskInterval[0], oldTaskInterval[1]),
-		// 	"new interval", fmt.Sprintf("[%v,%v]", newInterval[0], newInterval[1]),
-		// )
 	}
 
 	newSortedTaskList := sortedTaskSlice[:index]
