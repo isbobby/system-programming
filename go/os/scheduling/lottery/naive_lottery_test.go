@@ -18,8 +18,8 @@ func TestNaiveLotteryAddTasks(t *testing.T) {
 	expectedIntervals := [][2]int{{0, 0}, {1, 3}, {4, 8}, {9, 12}}
 
 	for i, intervalToTask := range scheduler.sortedTaskList {
-		if intervalToTask.interval != expectedIntervals[i] {
-			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.interval)
+		if intervalToTask.Interval() != expectedIntervals[i] {
+			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.Interval())
 			return
 		}
 	}
@@ -64,8 +64,8 @@ func TestNaiveLotteryRemoveTasks(t *testing.T) {
 	}
 
 	for i, intervalToTask := range scheduler.sortedTaskList {
-		if intervalToTask.interval != expectedIntervals[i] {
-			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.interval)
+		if intervalToTask.Interval() != expectedIntervals[i] {
+			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.Interval())
 			return
 		}
 	}
@@ -97,8 +97,8 @@ func TestNaiveLotteryRemoveLastTask(t *testing.T) {
 	}
 
 	for i, intervalToTask := range scheduler.sortedTaskList {
-		if intervalToTask.interval != expectedIntervals[i] {
-			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.interval)
+		if intervalToTask.Interval() != expectedIntervals[i] {
+			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.Interval())
 			return
 		}
 	}
@@ -130,8 +130,8 @@ func TestNaiveLotteryRemoveFirstTask(t *testing.T) {
 	}
 
 	for i, intervalToTask := range scheduler.sortedTaskList {
-		if intervalToTask.interval != expectedIntervals[i] {
-			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.interval)
+		if intervalToTask.Interval() != expectedIntervals[i] {
+			t.Error("interval result differs from expected", "expects", expectedIntervals[i], "got", intervalToTask.Interval())
 			return
 		}
 	}
