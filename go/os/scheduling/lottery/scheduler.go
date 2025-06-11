@@ -7,7 +7,7 @@ var (
 )
 
 type Scheduler interface {
-	ScheduleNextTask() Schedulable
+	ScheduleNextTask() (Schedulable, error)
 
 	AddTask(ticketCount int) Schedulable
 

@@ -1,10 +1,13 @@
 package main
 
+import "fmt"
+
 type Schedulable interface {
 	ID() int
 	MatchInterval(int) bool
 	Interval() [2]int
 	SetInterval([2]int)
+	Ticket() int
 }
 
 type task struct {
@@ -35,4 +38,12 @@ func (t *task) Interval() [2]int {
 
 func (t *task) SetInterval(newTicketInterval [2]int) {
 	t.ticketInterval = newTicketInterval
+}
+
+func (t *task) Ticket() int {
+	return t.ticketCount
+}
+
+func (t task) String() string {
+	return fmt.Sprintf("Task:%v, [%v - %v]", t.id, t.ticketInterval[0], t.ticketInterval[1])
 }

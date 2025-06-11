@@ -12,7 +12,8 @@ type naiveLotteryScheduler struct {
 	// auto-incrementing one based task ID
 	lastId         int
 	maxTicketCount int
-	sortedTaskList []Schedulable
+
+	taskQueue TaskQueue
 
 	// tracks the number of scheduling per task
 	scheduleAudit map[int]int
@@ -23,40 +24,34 @@ type naiveLotteryScheduler struct {
 func NewNaiveLotteryScheduler() Scheduler {
 	return &naiveLotteryScheduler{
 		lastId:         0,
-		maxTicketCount: 0,
+		maxTicketCount: -1,
 		logger:         logger{},
-		sortedTaskList: []Schedulable{},
+		taskQueue:      &sortedTasks{},
 		scheduleAudit:  map[int]int{},
 	}
 }
 
-func (s *naiveLotteryScheduler) ScheduleNextTask() Schedulable {
+func (s *naiveLotteryScheduler) ScheduleNextTask() (Schedulable, error) {
 	nextTicket := rand.Intn(s.maxTicketCount + 1)
 
-	nextTaskIndex := s.searchTaskByTicketNumber(nextTicket)
-
-	scheduledTask := s.sortedTaskList[nextTaskIndex]
-
-	s.logger.logTaskAction(scheduledTask, ScheduleTask)
-
-	if _, exists := s.scheduleAudit[scheduledTask.ID()]; !exists {
-		s.scheduleAudit[scheduledTask.ID()] = 1
+	task, err := s.taskQueue.FindTask(nextTicket)
+	if err != nil {
+		return nil, err
 	}
-	s.scheduleAudit[scheduledTask.ID()] += 1
+	s.recordTaskAudit(task)
 
-	return scheduledTask
+	return task, nil
 }
 
 func (s *naiveLotteryScheduler) AddTask(ticketCount int) Schedulable {
-	defer s.updateMaxTicketCount()
+	defer s.increaseMaxTicketCount(ticketCount)
 
 	// assign interval for new task
 	var newInterval [2]int
-	if len(s.sortedTaskList) == 0 {
+	if len(s.taskQueue.Tasks()) == 0 {
 		newInterval = [2]int{RangeStart, RangeStart + ticketCount - 1}
 	} else {
-		lastInterval := s.sortedTaskList[len(s.sortedTaskList)-1].Interval()
-		newInterval = [2]int{lastInterval[1] + 1, lastInterval[1] + ticketCount}
+		newInterval = [2]int{s.maxTicketCount + 1, s.maxTicketCount + ticketCount}
 	}
 
 	// create new task
@@ -65,92 +60,28 @@ func (s *naiveLotteryScheduler) AddTask(ticketCount int) Schedulable {
 	newTask := NewSchedulableTask(taskId, ticketCount, newInterval)
 
 	// add to task list
-	s.sortedTaskList = append(s.sortedTaskList, newTask)
+	s.taskQueue.AddTask(newTask)
+
 	s.logger.logTaskAction(newTask, AddTask)
 
 	return newTask
 }
 
 func (s *naiveLotteryScheduler) RemoveTask(id int) error {
-	index := -1
-	for i := range s.sortedTaskList {
-		if s.sortedTaskList[i].ID() == id {
-			index = i
-			break
-		}
+	task, err := s.taskQueue.RemoveTask(id)
+	if err != nil {
+		return err
 	}
-	if index < 0 {
-		return ErrIntervalNotExist
-	}
-
-	s.logger.logTaskAction(s.sortedTaskList[index], RemoveTask)
-
-	// remove last task
-	// refactor this, because if err is introduced below, we may get unwanted update since defer is not conditional
-	defer s.updateMaxTicketCount()
-	if index == len(s.sortedTaskList)-1 {
-		s.sortedTaskList = s.sortedTaskList[:len(s.sortedTaskList)-1]
-		return nil
-	}
-
-	// remove task in other position
-	previousIndex := index - 1
-	var shiftedIntervalStart int
-	if previousIndex < 0 {
-		// if removed task is the head
-		shiftedIntervalStart = 0
-	} else {
-		shiftedIntervalStart = s.sortedTaskList[previousIndex].Interval()[1] + 1
-	}
-
-	for i := index + 1; i < len(s.sortedTaskList); i++ {
-		oldTaskInterval := s.sortedTaskList[i].Interval()
-		taskTicketCount := oldTaskInterval[1] - oldTaskInterval[0]
-		newInterval := [2]int{shiftedIntervalStart, shiftedIntervalStart + taskTicketCount}
-		s.sortedTaskList[i].SetInterval(newInterval)
-		shiftedIntervalStart = newInterval[1] + 1
-
-		s.logger.logTaskAction(
-			s.sortedTaskList[i], UpdateTask,
-			"old interval", fmt.Sprintf("[%v,%v]", oldTaskInterval[0], oldTaskInterval[1]),
-			"new interval", fmt.Sprintf("[%v,%v]", newInterval[0], newInterval[1]),
-		)
-	}
-
-	newSortedTaskList := s.sortedTaskList[:index]
-	newSortedTaskList = append(newSortedTaskList, s.sortedTaskList[index+1:]...)
-	s.sortedTaskList = newSortedTaskList
-
+	s.decreaseMaxTicketCount(task.Ticket())
 	return nil
 }
 
-func (s *naiveLotteryScheduler) updateMaxTicketCount() {
-	s.maxTicketCount = s.sortedTaskList[len(s.sortedTaskList)-1].Interval()[1]
+func (s *naiveLotteryScheduler) increaseMaxTicketCount(ticketCount int) {
+	s.maxTicketCount += ticketCount
 }
 
-func (s *naiveLotteryScheduler) searchTaskByTicketNumber(t int) int {
-	if len(s.sortedTaskList) == 1 {
-		return 0
-	}
-
-	start, end := 0, len(s.sortedTaskList)-1
-
-	for start < end {
-		mid := (start + end) / 2
-
-		currInterval := s.sortedTaskList[mid].Interval()
-		if currInterval[0] <= t && t <= currInterval[1] {
-			return mid
-		}
-
-		if t < currInterval[0] {
-			end = mid - 1
-		} else {
-			start = mid + 1
-		}
-	}
-
-	return end
+func (s *naiveLotteryScheduler) decreaseMaxTicketCount(ticketCount int) {
+	s.maxTicketCount -= ticketCount
 }
 
 func (s *naiveLotteryScheduler) Log() {
@@ -159,6 +90,14 @@ func (s *naiveLotteryScheduler) Log() {
 	}
 }
 
-func (s naiveLotteryScheduler) ScheduleAudit() map[int]int {
+func (s *naiveLotteryScheduler) ScheduleAudit() map[int]int {
 	return s.scheduleAudit
+}
+
+func (s *naiveLotteryScheduler) recordTaskAudit(task Schedulable) {
+	if _, exists := s.scheduleAudit[task.ID()]; !exists {
+		s.scheduleAudit[task.ID()] = 0
+	} else {
+		s.scheduleAudit[task.ID()] += 1
+	}
 }
